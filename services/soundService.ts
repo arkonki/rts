@@ -91,11 +91,27 @@ class SoundService {
             const soundKeys = Object.keys(soundFiles) as SoundEffect[];
             let loadedCount = 0;
             const totalSounds = soundKeys.length;
+            let resolved = false;
+
+            const resolvePromise = () => {
+                if (!resolved) {
+                    resolved = true;
+                    this.areSoundsPreloaded = true;
+                    onProgress?.(100); // Make sure progress is 100%
+                    console.log("Sound preloading finished (might be due to timeout or completion).");
+                    resolve();
+                }
+            };
+            
+            // Fallback timeout in case some assets fail to load or get stuck.
+            const timeoutId = setTimeout(() => {
+                console.warn("Sound preloading took too long. Proceeding anyway.");
+                resolvePromise();
+            }, 15000); // 15 seconds
 
             if (totalSounds === 0) {
-                this.areSoundsPreloaded = true;
-                onProgress?.(100);
-                resolve();
+                clearTimeout(timeoutId);
+                resolvePromise();
                 return;
             }
 
@@ -103,9 +119,8 @@ class SoundService {
                 loadedCount++;
                 onProgress?.((loadedCount / totalSounds) * 100);
                 if (loadedCount === totalSounds) {
-                    this.areSoundsPreloaded = true;
-                    console.log("All sounds preloaded.");
-                    resolve();
+                    clearTimeout(timeoutId);
+                    resolvePromise();
                 }
             };
             
