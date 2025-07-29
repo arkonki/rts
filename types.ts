@@ -195,7 +195,6 @@ export interface AIAction {
     unitIds?: string[];
     targetPosition?: Position; // For superweapon
     gatherTargetId?: string; // For GATHER action
-    error?: 'RATE_LIMIT';
 }
 
 export interface EntityConfig {

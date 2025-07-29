@@ -1,4 +1,5 @@
 
+import { GoogleGenAI, Type } from "@google/genai";
 import { GameState, AIAction, BuildingType, UnitType, FogState, PlayerId, AIConfiguration } from '../types';
 import { TILE_SIZE } from "../constants";
 import { getProducibleItems } from "../utils/logic";
@@ -49,28 +50,16 @@ export async function getAICommand(state: GameState, aiPlayerId: PlayerId, aiCon
     const aiEntities = Object.values(state.entities).filter(e => e.playerId === aiPlayerId);
     const { producibleUnits, producibleBuildings } = getProducibleItems(state.players[aiPlayerId], aiEntities);
     
-    let systemInstruction = "You are a balanced AI commander named 'Skynet' in a real-time strategy game. Your goal is to defeat the enemy by balancing economic growth, technological advancement, and military might. Adapt your strategy to the situation on the battlefield. You must respond with a valid JSON object matching the requested format.";
+    let systemInstruction = "You are a balanced AI commander named 'Skynet' in a real-time strategy game. Your goal is to defeat the enemy by balancing economic growth, technological advancement, and military might. Adapt your strategy to the situation on the battlefield. You must respond with a valid JSON object matching the requested schema.";
 
     if (aiConfig.personality === 'AGGRESSIVE') {
-        systemInstruction = "You are an aggressive AI commander named 'Skynet'. Your only goal is to build cheap, fast units and rush the enemy's HQ. Prioritize constant military production and relentless attacks over economic growth or high-tech units. Overwhelm the enemy with numbers. You must respond with a valid JSON object matching the requested format.";
+        systemInstruction = "You are an aggressive AI commander named 'Skynet'. Your only goal is to build cheap, fast units and rush the enemy's HQ. Prioritize constant military production and relentless attacks over economic growth or high-tech units. Overwhelm the enemy with numbers. You must respond with a valid JSON object matching the requested schema.";
     } else if (aiConfig.personality === 'ECONOMIC') {
-        systemInstruction = "You are a patient, economic AI commander named 'Skynet'. Your goal is to build an unstoppable late-game army. Prioritize building a massive economy with multiple Refineries and Chrono Miners first. Defend yourself, but only attack when you have a decisive technological and numerical advantage. You must respond with a valid JSON object matching the requested format.";
+        systemInstruction = "You are a patient, economic AI commander named 'Skynet'. Your goal is to build an unstoppable late-game army. Prioritize building a massive economy with multiple Refineries and Chrono Miners first. Defend yourself, but only attack when you have a decisive technological and numerical advantage. You must respond with a valid JSON object matching the requested schema.";
     }
 
     const prompt = `
 This is the current game state for you, ${aiPlayerId}. Provide your next action as a single JSON object.
-
-Your JSON response must have the following structure, omitting any optional fields that are not relevant for the chosen action:
-{
-  "thought": "Your reasoning for the chosen action, according to your personality.",
-  "action": "'BUILD' | 'TRAIN' | 'ATTACK' | 'IDLE' | 'LAUNCH_SUPERWEAPON' | 'GATHER'",
-  "buildingType": "string (The type of building to construct if action is BUILD)",
-  "unitType": "string (The type of unit to train if action is TRAIN)",
-  "unitIds": ["string"] (IDs of units for the action. For GATHER, only one ID. For ATTACK, can be multiple or omitted to use all available units.)",
-  "attackTargetId": "string (The ID of the enemy entity to attack if action is ATTACK)",
-  "gatherTargetId": "string (The ID of the resource patch to gather from if action is GATHER)",
-  "targetPosition": { "x": number, "y": number } (The coordinates for a superweapon strike.)
-}
 
 Your current status:
 - Credits: ${aiPlayer.credits}
@@ -93,39 +82,46 @@ Possible Actions:
 6.  IDLE: Do nothing this turn.
 `;
 
-    try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${process.env.API_KEY}`,
-                "Content-Type": "application/json"
+    const aiActionSchema = {
+        type: Type.OBJECT,
+        properties: {
+            thought: { type: Type.STRING, description: 'Your reasoning for the chosen action, according to your personality.' },
+            action: { type: Type.STRING, enum: ['BUILD', 'TRAIN', 'ATTACK', 'IDLE', 'LAUNCH_SUPERWEAPON', 'GATHER'], description: "The action to take." },
+            buildingType: { type: Type.STRING, description: 'The type of building to construct if action is BUILD' },
+            unitType: { type: Type.STRING, description: 'The type of unit to train if action is TRAIN' },
+            unitIds: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'IDs of units for the action.' },
+            attackTargetId: { type: Type.STRING, description: 'The ID of the enemy entity to attack if action is ATTACK' },
+            gatherTargetId: { type: Type.STRING, description: 'The ID of the resource patch to gather from if action is GATHER' },
+            targetPosition: {
+                type: Type.OBJECT,
+                properties: {
+                    x: { type: Type.NUMBER },
+                    y: { type: Type.NUMBER },
+                },
+                description: 'The coordinates for a superweapon strike.',
             },
-            body: JSON.stringify({
-                model: "qwen/qwen3-coder:free",
-                messages: [
-                    { role: "system", content: systemInstruction },
-                    { role: "user", content: prompt },
-                ],
-                response_format: { "type": "json_object" },
+        },
+        required: ['thought', 'action'],
+    };
+
+    try {
+        const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                systemInstruction: systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: aiActionSchema,
                 temperature: 0.8,
-            })
+            }
         });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            console.error(`Error fetching AI command for ${aiPlayerId} from OpenRouter:`, errorData);
-            if (response.status === 429) {
-                return { action: 'IDLE', thought: 'My command servers are overloaded. Standing by.', playerId: aiPlayerId, error: 'RATE_LIMIT' };
-            }
-            return { action: 'IDLE', thought: 'Error in decision making. Holding position.', playerId: aiPlayerId };
-        }
-
-        const data = await response.json();
-        const jsonText = data.choices[0].message.content;
+        const jsonText = response.text.trim();
         const aiAction = JSON.parse(jsonText);
         return { ...aiAction, playerId: aiPlayerId } as AIAction;
     } catch (error) {
-        console.error(`Error processing AI command for ${aiPlayerId}:`, error);
+        console.error(`Error fetching AI command for ${aiPlayerId}:`, error);
         return { action: 'IDLE', thought: 'Critical error processing command.', playerId: aiPlayerId };
     }
 }

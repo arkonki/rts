@@ -853,12 +853,7 @@ export function gameReducer(state: GameState, action: any): GameState {
                 break;
         }
 
-        let newCooldown = DIFFICULTY_SETTINGS[aiConfig.difficulty].decisionInterval;
-        // If the API returned a rate limit error, double the cooldown to back off.
-        if (aiActionPayload.error === 'RATE_LIMIT') {
-            newCooldown *= 2;
-            message = `${playerId}: Command servers overloaded. Backing off...`;
-        }
+        const newCooldown = DIFFICULTY_SETTINGS[aiConfig.difficulty].decisionInterval;
         const newPlayerState = { ...newState.players[playerId], aiActionCooldown: newCooldown };
         
         return { ...newState, players: {...newState.players, [playerId]: newPlayerState }, lastMessage: message };
