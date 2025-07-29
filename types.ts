@@ -22,6 +22,9 @@ export enum UnitType {
   APOCALYPSE_TANK = 'APOCALYPSE_TANK',
   SEA_SCORPION = 'SEA_SCORPION',
   CHRONO_MINER = 'CHRONO_MINER',
+
+  // New Support Unit
+  ENGINEER = 'ENGINEER',
 }
 
 export enum BuildingType {
@@ -32,6 +35,8 @@ export enum BuildingType {
   WAR_FACTORY = 'WAR_FACTORY',
   AIRFIELD = 'AIRFIELD',
   NAVAL_YARD = 'NAVAL_YARD',
+  REPAIR_BAY = 'REPAIR_BAY',
+
   // Superweapons
   CHRONO_SPHERE = 'CHRONO_SPHERE',
   NUCLEAR_MISSILE_SILO = 'NUCLEAR_MISSILE_SILO',
@@ -74,13 +79,14 @@ export interface BaseEntity {
 export interface Unit extends BaseEntity {
   type: UnitType;
   domain: UnitDomain;
-  status: 'IDLE' | 'MOVING' | 'ATTACKING' | 'ATTACK_MOVING' | 'MOVING_TO_ORE' | 'GATHERING' | 'RETURNING_TO_REFINERY';
+  status: 'IDLE' | 'MOVING' | 'ATTACKING' | 'ATTACK_MOVING' | 'MOVING_TO_ORE' | 'GATHERING' | 'RETURNING_TO_REFINERY' | 'MOVING_TO_REPAIR' | 'REPAIRING';
   targetPosition?: Position;
   targetId?: string;
   path?: Position[];
   cargoAmount?: number;
   gatherTargetId?: string;
   refineryTargetId?: string;
+  repairTargetId?: string;
 }
 
 export interface Building extends BaseEntity {
@@ -122,7 +128,7 @@ export interface PlayerState {
 
 export type GameStatus = 'MENU' | 'LOADING' | 'PLAYING' | 'PAUSED' | 'PLAYER_WIN' | 'AI_WIN';
 
-export type VisualEffectType = 'DAMAGE_TEXT' | 'ATTACK_VISUAL' | 'EXPLOSION' | 'CHRONO_VORTEX' | 'NUKE_IMPACT';
+export type VisualEffectType = 'DAMAGE_TEXT' | 'ATTACK_VISUAL' | 'EXPLOSION' | 'CHRONO_VORTEX' | 'NUKE_IMPACT' | 'REPAIR_TEXT';
 
 export interface BaseVisualEffect {
     id: string;
@@ -132,6 +138,12 @@ export interface BaseVisualEffect {
 
 export interface DamageTextEffect extends BaseVisualEffect {
     type: 'DAMAGE_TEXT';
+    text: string;
+    position: Position;
+}
+
+export interface RepairTextEffect extends BaseVisualEffect {
+    type: 'REPAIR_TEXT';
     text: string;
     position: Position;
 }
@@ -159,7 +171,7 @@ export interface NukeImpactEffect extends BaseVisualEffect {
     position: Position;
 }
 
-export type VisualEffect = DamageTextEffect | AttackVisualEffect | ExplosionEffect | ChronoVortexEffect | NukeImpactEffect;
+export type VisualEffect = DamageTextEffect | AttackVisualEffect | ExplosionEffect | ChronoVortexEffect | NukeImpactEffect | RepairTextEffect;
 
 export interface AIConfiguration {
     id: PlayerId;
@@ -180,9 +192,10 @@ export interface GameState {
   visualEffects: VisualEffect[];
   isChronoTeleportPending: boolean;
   resourcePatches: Record<string, ResourcePatch>;
+  controlGroups: Record<string, string[]>;
 }
 
-export type AIActionType = 'BUILD' | 'TRAIN' | 'ATTACK' | 'IDLE' | 'LAUNCH_SUPERWEAPON' | 'GATHER';
+export type AIActionType = 'BUILD' | 'TRAIN' | 'ATTACK' | 'IDLE' | 'LAUNCH_SUPERWEAPON' | 'GATHER' | 'REPAIR';
 
 export interface AIAction {
     playerId: PlayerId;
@@ -195,7 +208,10 @@ export interface AIAction {
     unitIds?: string[];
     targetPosition?: Position; // For superweapon
     gatherTargetId?: string; // For GATHER action
+    repairTargetId?: string; // For REPAIR action
 }
+
+export type EntityCategory = 'INFANTRY' | 'VEHICLE_COMBAT' | 'VEHICLE_SUPPORT' | 'AIRCRAFT' | 'VESSEL' | 'BUILDING_BASE' | 'BUILDING_SUPERWEAPON';
 
 export interface EntityConfig {
   name: string;
@@ -205,6 +221,7 @@ export interface EntityConfig {
   size: number;
   visionRange: number; // in tiles
   description: string;
+  category: EntityCategory;
 
   // Unit specific
   damage?: number;
@@ -215,6 +232,8 @@ export interface EntityConfig {
   canAttack?: UnitDomain[];
   gatherCapacity?: number;
   gatherAmount?: number;
+  repairPower?: number; // HP per second
+  repairCostMultiplier?: number; // Cost per HP repaired
 
   // Building specific
   powerConsumed?: number;

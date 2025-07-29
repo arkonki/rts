@@ -1,7 +1,6 @@
 
-
-import React from 'react';
-import { GameState, BuildingType, UnitType, Building, Unit, PlayerState, GameEntity } from '../types';
+import React, { useState, useEffect } from 'react';
+import { GameState, BuildingType, UnitType, Building, Unit, PlayerState, GameEntity, EntityCategory } from '../types';
 import { ENTITY_CONFIGS, MAP_HEIGHT, MAP_WIDTH } from '../constants';
 import { CreditsIcon, PowerIcon, EntityIcon } from './icons';
 import { Minimap } from './Minimap';
@@ -130,11 +129,32 @@ interface SidebarProps {
     onMouseLeave: () => void;
 }
 
-export const Sidebar = ({ playerState, state, dispatch, viewportSize, setPlacingBuildingType, onMouseEnter, onMouseLeave }: SidebarProps) => {
+const PRODUCTION_TABS: Record<BuildingType, Record<string, EntityCategory[]>> = {
+    [BuildingType.HQ]: { 'Base': ['BUILDING_BASE'], 'Superweapons': ['BUILDING_SUPERWEAPON'] },
+    [BuildingType.BARRACKS]: { 'Infantry': ['INFANTRY'] },
+    [BuildingType.WAR_FACTORY]: { 'Combat': ['VEHICLE_COMBAT'], 'Support': ['VEHICLE_SUPPORT'] },
+    [BuildingType.AIRFIELD]: { 'Aircraft': ['AIRCRAFT'] },
+    [BuildingType.NAVAL_YARD]: { 'Vessels': ['VESSEL'] },
+    [BuildingType.REPAIR_BAY]: {},
+    [BuildingType.POWER_PLANT]: {},
+    [BuildingType.REFINERY]: {},
+    [BuildingType.CHRONO_SPHERE]: {},
+    [BuildingType.NUCLEAR_MISSILE_SILO]: {},
+};
 
+export const Sidebar = ({ playerState, state, dispatch, viewportSize, setPlacingBuildingType, onMouseEnter, onMouseLeave }: SidebarProps) => {
+    const [activeTab, setActiveTab] = useState<string>('');
     const { entities, selectedIds } = state;
     const selectedEntity = selectedIds.length === 1 ? entities[selectedIds[0]] : null;
     const playerEntities = Object.values(entities).filter(e => e.playerId === playerState.id);
+
+    useEffect(() => {
+        if (selectedEntity && 'productionQueue' in selectedEntity) {
+            const tabs = PRODUCTION_TABS[selectedEntity.type as BuildingType];
+            const firstTab = Object.keys(tabs)[0];
+            setActiveTab(firstTab || '');
+        }
+    }, [selectedEntity]);
 
     const renderProductionPanel = () => {
         if (!selectedEntity || 'status' in selectedEntity || selectedIds.length > 1 || selectedEntity.playerId !== playerState.id) {
@@ -150,6 +170,9 @@ export const Sidebar = ({ playerState, state, dispatch, viewportSize, setPlacing
         
         const { producibleBuildings, producibleUnits } = getProducibleItems(playerState, playerEntities);
         const allProducible = [...producibleBuildings, ...producibleUnits];
+
+        const tabs = PRODUCTION_TABS[building.type as BuildingType];
+        const tabNames = Object.keys(tabs);
         
         const handleProduce = (itemType: UnitType | BuildingType) => {
             if (Object.values(UnitType).includes(itemType as UnitType)) {
@@ -160,10 +183,24 @@ export const Sidebar = ({ playerState, state, dispatch, viewportSize, setPlacing
             }
         };
 
+        const categoriesInTab = tabs[activeTab] || [];
+        const filteredItems = itemsToProduce.filter(item => categoriesInTab.includes(ENTITY_CONFIGS[item].category));
+
         return (
             <div className="space-y-1">
                 <SelectedInfoPanel selectedIds={selectedIds} entities={entities} />
-                {itemsToProduce.map(item => (
+                
+                {tabNames.length > 1 && (
+                     <div className="flex border-b border-gray-600 mb-2">
+                        {tabNames.map(tabName => (
+                            <button key={tabName} onClick={() => setActiveTab(tabName)} className={`px-4 py-1 text-sm font-bold transition-colors ${activeTab === tabName ? 'bg-cyan-800/50 text-cyan-300 border-b-2 border-cyan-400' : 'text-gray-400 hover:bg-gray-700/50'}`}>
+                                {tabName}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {filteredItems.map(item => (
                      <ProductionButton 
                         key={item} 
                         itemType={item} 

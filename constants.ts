@@ -13,6 +13,7 @@ export const GAME_LOOP_INTERVAL = 100; // ms
 export const ATTACK_VISUAL_DURATION = 300; // ms
 export const EXPLOSION_DURATION = 400; // ms
 export const DAMAGE_TEXT_DURATION = 1000; // ms
+export const REPAIR_TEXT_DURATION = 1000; // ms
 export const CHRONO_VORTEX_DURATION = 1500; // ms
 export const NUKE_IMPACT_DURATION = 5000; // ms
 
@@ -77,7 +78,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     producedBy: BuildingType.BARRACKS,
     domain: UnitDomain.GROUND,
     canAttack: [UnitDomain.GROUND, UnitDomain.AIR],
-    description: 'Basic infantry, effective in groups. Can attack both ground and air targets.'
+    description: 'Basic infantry, effective in groups. Can attack both ground and air targets.',
+    category: 'INFANTRY',
   },
   [UnitType.TESLA_TROOPER]: {
     name: 'Tesla Trooper',
@@ -93,7 +95,22 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     producedBy: BuildingType.BARRACKS,
     domain: UnitDomain.GROUND,
     canAttack: [UnitDomain.GROUND],
-    description: 'Armored shock trooper with a powerful short-range Tesla weapon.'
+    description: 'Armored shock trooper with a powerful short-range Tesla weapon.',
+    category: 'INFANTRY',
+  },
+    [UnitType.ENGINEER]: {
+    name: 'Engineer',
+    cost: 200,
+    buildTime: 4000,
+    hp: 60,
+    size: 20,
+    visionRange: 4,
+    producedBy: BuildingType.BARRACKS,
+    domain: UnitDomain.GROUND,
+    description: 'Can repair damaged buildings and vehicles. Costs credits to repair.',
+    category: 'INFANTRY',
+    repairPower: 20, // HP per second
+    repairCostMultiplier: 0.1, // credits per HP repaired
   },
   [UnitType.TANK]: {
     name: 'Grizzly Tank',
@@ -109,7 +126,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     producedBy: BuildingType.WAR_FACTORY,
     domain: UnitDomain.GROUND,
     canAttack: [UnitDomain.GROUND],
-    description: 'Standard battle tank. A versatile backbone for any ground assault.'
+    description: 'Standard battle tank. A versatile backbone for any ground assault.',
+    category: 'VEHICLE_COMBAT',
   },
   [UnitType.PRISM_TANK]: {
     name: 'Prism Tank',
@@ -125,7 +143,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     producedBy: BuildingType.WAR_FACTORY,
     domain: UnitDomain.GROUND,
     canAttack: [UnitDomain.GROUND],
-    description: 'Long-range artillery that fires a devastating energy beam. Fragile but deadly.'
+    description: 'Long-range artillery that fires a devastating energy beam. Fragile but deadly.',
+    category: 'VEHICLE_COMBAT',
   },
   [UnitType.APOCALYPSE_TANK]: {
     name: 'Apocalypse Tank',
@@ -141,7 +160,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     producedBy: BuildingType.WAR_FACTORY,
     domain: UnitDomain.GROUND,
     canAttack: [UnitDomain.GROUND, UnitDomain.AIR],
-    description: 'The ultimate heavy tank. Extremely durable and powerful against all targets.'
+    description: 'The ultimate heavy tank. Extremely durable and powerful against all targets.',
+    category: 'VEHICLE_COMBAT',
   },
   [UnitType.CHRONO_MINER]: {
     name: 'Chrono Miner',
@@ -155,6 +175,7 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     description: 'Resource harvester. The first is free with a new Refinery. Build more at the War Factory.',
     gatherCapacity: 500,
     gatherAmount: 25,
+    category: 'VEHICLE_SUPPORT',
   },
 
   // --- AIR UNITS ---
@@ -172,7 +193,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     producedBy: BuildingType.AIRFIELD,
     domain: UnitDomain.AIR,
     canAttack: [UnitDomain.GROUND, UnitDomain.AIR],
-    description: 'Fast and agile flying infantry, effective against a variety of targets.'
+    description: 'Fast and agile flying infantry, effective against a variety of targets.',
+    category: 'AIRCRAFT',
   },
   [UnitType.FIGHTER_JET]: {
     name: 'Fighter Jet',
@@ -188,7 +210,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     producedBy: BuildingType.AIRFIELD,
     domain: UnitDomain.AIR,
     canAttack: [UnitDomain.GROUND, UnitDomain.AIR, UnitDomain.SEA],
-    description: 'Superior air-to-air fighter that can also perform strafing runs on ground and sea targets.'
+    description: 'Superior air-to-air fighter that can also perform strafing runs on ground and sea targets.',
+    category: 'AIRCRAFT',
   },
   [UnitType.KIROV_AIRSHIP]: {
     name: 'Kirov Airship',
@@ -204,7 +227,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     producedBy: BuildingType.AIRFIELD,
     domain: UnitDomain.AIR,
     canAttack: [UnitDomain.GROUND, UnitDomain.SEA],
-    description: '"Kirov reporting." A slow but incredibly tough siege airship that drops massive bombs.'
+    description: '"Kirov reporting." A slow but incredibly tough siege airship that drops massive bombs.',
+    category: 'AIRCRAFT',
   },
   
   // --- SEA UNITS ---
@@ -222,7 +246,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     producedBy: BuildingType.NAVAL_YARD,
     domain: UnitDomain.SEA,
     canAttack: [UnitDomain.GROUND, UnitDomain.SEA],
-    description: 'Primary warship for naval combat and coastal bombardment.'
+    description: 'Primary warship for naval combat and coastal bombardment.',
+    category: 'VESSEL',
   },
   [UnitType.SEA_SCORPION]: {
     name: 'Sea Scorpion',
@@ -238,7 +263,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     producedBy: BuildingType.NAVAL_YARD,
     domain: UnitDomain.SEA,
     canAttack: [UnitDomain.AIR, UnitDomain.SEA],
-    description: 'Anti-air and anti-ship patrol boat. Fast and versatile.'
+    description: 'Anti-air and anti-ship patrol boat. Fast and versatile.',
+    category: 'VESSEL',
   },
 
   // --- BUILDINGS ---
@@ -250,7 +276,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     powerConsumed: 10,
     size: TILE_SIZE * 2,
     visionRange: 10,
-    description: 'Your command center. Produces basic buildings. Protect it at all costs.'
+    description: 'Your command center. Produces basic buildings. Protect it at all costs.',
+    category: 'BUILDING_BASE',
   },
   [BuildingType.REFINERY]: {
     name: 'Refinery',
@@ -261,7 +288,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     size: TILE_SIZE * 1.5,
     visionRange: 4,
     producedBy: BuildingType.HQ,
-    description: 'Grants one free Chrono Miner upon completion. Acts as a resource drop-off point.'
+    description: 'Grants one free Chrono Miner upon completion. Acts as a resource drop-off point.',
+    category: 'BUILDING_BASE',
   },
   [BuildingType.POWER_PLANT]: {
     name: 'Power Plant',
@@ -273,7 +301,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     size: TILE_SIZE,
     visionRange: 4,
     producedBy: BuildingType.HQ,
-    description: 'Provides power to your base. Buildings will shut down without enough power.'
+    description: 'Provides power to your base. Buildings will shut down without enough power.',
+    category: 'BUILDING_BASE',
   },
   [BuildingType.BARRACKS]: {
     name: 'Barracks',
@@ -284,7 +313,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     size: TILE_SIZE * 1.25,
     visionRange: 5,
     producedBy: BuildingType.HQ,
-    description: 'Trains all infantry units.'
+    description: 'Trains all infantry units.',
+    category: 'BUILDING_BASE',
   },
   [BuildingType.WAR_FACTORY]: {
     name: 'War Factory',
@@ -296,7 +326,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     visionRange: 5,
     requires: [BuildingType.BARRACKS, BuildingType.POWER_PLANT],
     producedBy: BuildingType.HQ,
-    description: 'Constructs all ground vehicles.'
+    description: 'Constructs all ground vehicles.',
+    category: 'BUILDING_BASE',
   },
   [BuildingType.AIRFIELD]: {
     name: 'Airfield',
@@ -308,7 +339,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     visionRange: 6,
     requires: [BuildingType.BARRACKS, BuildingType.POWER_PLANT],
     producedBy: BuildingType.HQ,
-    description: 'Builds and maintains all air units.'
+    description: 'Builds and maintains all air units.',
+    category: 'BUILDING_BASE',
   },
   [BuildingType.NAVAL_YARD]: {
     name: 'Naval Yard',
@@ -321,7 +353,23 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     placementRule: 'COASTAL',
     requires: [BuildingType.BARRACKS, BuildingType.POWER_PLANT],
     producedBy: BuildingType.HQ,
-    description: 'Constructs all naval vessels. Must be placed on a coastline.'
+    description: 'Constructs all naval vessels. Must be placed on a coastline.',
+    category: 'BUILDING_BASE',
+  },
+  [BuildingType.REPAIR_BAY]: {
+    name: 'Repair Bay',
+    cost: 1000,
+    buildTime: 12000,
+    hp: 1000,
+    powerConsumed: 25,
+    size: TILE_SIZE * 1.75,
+    visionRange: 5,
+    requires: [BuildingType.WAR_FACTORY],
+    producedBy: BuildingType.HQ,
+    description: 'Automatically repairs nearby damaged vehicles. Costs credits.',
+    category: 'BUILDING_BASE',
+    repairPower: 30, // HP per second
+    repairCostMultiplier: 0.2, // credits per HP repaired
   },
 
   // --- SUPERWEAPONS ---
@@ -336,7 +384,8 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     requires: [BuildingType.WAR_FACTORY, BuildingType.AIRFIELD],
     superweaponCooldown: 300000, // 5 minutes
     producedBy: BuildingType.HQ,
-    description: 'Allows you to teleport a squad of units anywhere on the map.'
+    description: 'Allows you to teleport a squad of units anywhere on the map.',
+    category: 'BUILDING_SUPERWEAPON',
   },
   [BuildingType.NUCLEAR_MISSILE_SILO]: {
     name: 'Nuclear Missile Silo',
@@ -349,6 +398,7 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     requires: [BuildingType.WAR_FACTORY],
     superweaponCooldown: 420000, // 7 minutes
     producedBy: BuildingType.HQ,
-    description: 'Launches a devastating nuclear missile to obliterate a target area.'
+    description: 'Launches a devastating nuclear missile to obliterate a target area.',
+    category: 'BUILDING_SUPERWEAPON',
   },
 };

@@ -10,6 +10,8 @@ import {
   FaPlane,
   FaAnchor,
   FaQuestion,
+  FaHardHat,
+  FaTools,
 } from 'react-icons/fa';
 import {
   GiRifle,
@@ -101,6 +103,13 @@ export const EntityIcon = ({ type, size = '10' }: { type: BuildingType | UnitTyp
       borderClass = 'border-indigo-300';
       shapeClass = 'rounded-sm';
       break;
+    
+    case BuildingType.REPAIR_BAY:
+        IconComponent = FaTools;
+        bgClass = 'bg-orange-600';
+        borderClass = 'border-orange-300';
+        shapeClass = 'rounded-sm';
+        break;
 
     case BuildingType.CHRONO_SPHERE:
         IconComponent = GiVortex;
@@ -121,6 +130,13 @@ export const EntityIcon = ({ type, size = '10' }: { type: BuildingType | UnitTyp
       IconComponent = GiRifle;
       bgClass = 'bg-gray-500';
       borderClass = 'border-gray-200';
+      shapeClass = 'rounded-full';
+      break;
+    
+    case UnitType.ENGINEER:
+      IconComponent = FaHardHat;
+      bgClass = 'bg-orange-500';
+      borderClass = 'border-orange-200';
       shapeClass = 'rounded-full';
       break;
 

@@ -1,6 +1,6 @@
 
 import { GameState, GameStatus, BuildingType, Building, Unit, UnitType, FogState, AIAction, TerrainType, UnitDomain, Position, VisualEffect, AIConfiguration, PlayerId, PlayerState, SuperweaponState, ResourcePatch, GameEntity } from '../types';
-import { ENTITY_CONFIGS, GAME_LOOP_INTERVAL, MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, MAP_WIDTH_TILES, MAP_HEIGHT_TILES, DIFFICULTY_SETTINGS, ATTACK_VISUAL_DURATION, EXPLOSION_DURATION, DAMAGE_TEXT_DURATION, STARTING_POSITIONS, CHRONO_VORTEX_DURATION, NUKE_IMPACT_DURATION } from '../constants';
+import { ENTITY_CONFIGS, GAME_LOOP_INTERVAL, MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, MAP_WIDTH_TILES, MAP_HEIGHT_TILES, DIFFICULTY_SETTINGS, ATTACK_VISUAL_DURATION, EXPLOSION_DURATION, DAMAGE_TEXT_DURATION, REPAIR_TEXT_DURATION, STARTING_POSITIONS, CHRONO_VORTEX_DURATION, NUKE_IMPACT_DURATION } from '../constants';
 import { generateMap } from '../utils/map';
 import { findPath } from '../utils/pathfinding';
 import { findNearestEnemy } from '../utils/entity';
@@ -20,6 +20,7 @@ export const INITIAL_STATE: GameState = {
   visualEffects: [],
   isChronoTeleportPending: false,
   resourcePatches: {},
+  controlGroups: {},
 };
 
 // --- Game Tick Helper Functions ---
@@ -126,6 +127,34 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
     let newVisualEffects = [...state.visualEffects];
     let somethingChanged = false;
 
+    // --- Repair Bay Logic ---
+    const repairBays = Object.values(newEntities).filter(e => e.type === BuildingType.REPAIR_BAY && (e as Building).isPowered && !(e as Building).isConstructing) as Building[];
+    if (repairBays.length > 0) {
+        const repairBayConfig = ENTITY_CONFIGS[BuildingType.REPAIR_BAY];
+        const repairPerTick = (repairBayConfig.repairPower! * GAME_LOOP_INTERVAL) / 1000;
+        
+        Object.values(newEntities).forEach(entity => {
+            if ('domain' in entity && entity.domain === UnitDomain.GROUND && entity.hp < entity.maxHp) {
+                const vehicle = entity as Unit;
+                const isNearBay = repairBays.some(bay => Math.hypot(bay.position.x - vehicle.position.x, bay.position.y - vehicle.position.y) < bay.size * 1.5);
+                
+                if (isNearBay) {
+                    const player = newPlayers[vehicle.playerId];
+                    const repairCost = repairPerTick * repairBayConfig.repairCostMultiplier!;
+                    if (player.credits >= repairCost) {
+                        const newHp = Math.min(vehicle.maxHp, vehicle.hp + repairPerTick);
+                        newPlayers[vehicle.playerId] = { ...player, credits: player.credits - repairCost };
+                        newEntities[vehicle.id] = { ...vehicle, hp: newHp };
+                        if (Math.random() < 0.1) { // Throttle effect creation
+                            newVisualEffects.push({ id: `rep_${now}_${vehicle.id}`, type: 'REPAIR_TEXT', creationTime: now, text: `+${Math.round(repairPerTick)}`, position: vehicle.position });
+                        }
+                        somethingChanged = true;
+                    }
+                }
+            }
+        });
+    }
+
     const allUnits = Object.values(newEntities).filter(e => 'status' in e) as Unit[];
     
     allUnits.forEach(unit => {
@@ -177,7 +206,29 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
                     break;
                 }
             }
-        } else { // --- COMBAT LOGIC for non-miners ---
+        } else if (unit.type === UnitType.ENGINEER) {
+            if (currentUnit.status === 'REPAIRING' && currentUnit.repairTargetId) {
+                const target = newEntities[currentUnit.repairTargetId];
+                if (!target || target.hp >= target.maxHp) {
+                    currentUnit = { ...currentUnit, status: 'IDLE', repairTargetId: undefined };
+                } else {
+                    const player = newPlayers[currentUnit.playerId];
+                    const repairPerTick = (config.repairPower! * GAME_LOOP_INTERVAL) / 1000;
+                    const repairCost = repairPerTick * config.repairCostMultiplier!;
+                    if (player.credits >= repairCost) {
+                        const newHp = Math.min(target.maxHp, target.hp + repairPerTick);
+                        newPlayers[currentUnit.playerId] = { ...player, credits: player.credits - repairCost };
+                        newEntities[target.id] = { ...target, hp: newHp };
+                        if (Math.random() < 0.2) { // Throttle effect creation
+                            newVisualEffects.push({ id: `rep_${now}_${target.id}`, type: 'REPAIR_TEXT', creationTime: now, text: `+${Math.round(repairPerTick)}`, position: target.position });
+                        }
+                    } else { // Not enough money, stop repairing
+                        currentUnit = { ...currentUnit, status: 'IDLE', repairTargetId: undefined };
+                    }
+                }
+            }
+        }
+        else { // --- COMBAT LOGIC for non-miners/non-engineers ---
             if (unit.status === 'IDLE' || unit.status === 'ATTACK_MOVING') {
                 const enemy = findNearestEnemy(unit, newEntities, state.fogOfWar);
                 if (enemy) {
@@ -245,7 +296,10 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
                     
                     if (currentUnit.status === 'MOVING_TO_ORE') {
                         currentUnit.status = 'GATHERING';
-                    } else if (currentUnit.status === 'RETURNING_TO_REFINERY') {
+                    } else if (currentUnit.status === 'MOVING_TO_REPAIR') {
+                        currentUnit.status = 'REPAIRING';
+                    }
+                    else if (currentUnit.status === 'RETURNING_TO_REFINERY') {
                         const player = newPlayers[currentUnit.playerId];
                         newPlayers[currentUnit.playerId] = { ...player, credits: player.credits + (currentUnit.cargoAmount || 0) };
                         currentUnit.cargoAmount = 0;
@@ -372,6 +426,7 @@ function updateVisualEffects(effects: VisualEffect[], now: number): VisualEffect
             case 'ATTACK_VISUAL': duration = ATTACK_VISUAL_DURATION; break;
             case 'EXPLOSION': duration = EXPLOSION_DURATION; break;
             case 'DAMAGE_TEXT': duration = DAMAGE_TEXT_DURATION; break;
+            case 'REPAIR_TEXT': duration = REPAIR_TEXT_DURATION; break;
             case 'CHRONO_VORTEX': duration = CHRONO_VORTEX_DURATION; break;
             case 'NUKE_IMPACT': duration = NUKE_IMPACT_DURATION; break;
         }
@@ -485,12 +540,71 @@ export function gameReducer(state: GameState, action: any): GameState {
     case 'UPDATE_VIEWPORT':
       return { ...state, viewport: action.payload };
     
+    case 'CREATE_CONTROL_GROUP': {
+        const { key, ids } = action.payload;
+        const newControlGroups = { ...state.controlGroups };
+        if (ids.length > 0) {
+            newControlGroups[key] = ids;
+        } else {
+            delete newControlGroups[key];
+        }
+        return { ...state, controlGroups: newControlGroups };
+    }
+
+    case 'SELECT_CONTROL_GROUP': {
+        const { key } = action.payload;
+        const groupIds = state.controlGroups[key] || [];
+        const existingIds = groupIds.filter(id => state.entities[id]);
+        return { ...state, selectedIds: existingIds, isChronoTeleportPending: false };
+    }
+
+    case 'SELECT_AND_CENTER_CONTROL_GROUP': {
+        const { key } = action.payload;
+        const groupIds = state.controlGroups[key] || [];
+        const existingIds = groupIds.filter(id => state.entities[id]);
+        if (existingIds.length === 0) {
+            return { ...state, selectedIds: [] };
+        }
+
+        const units = existingIds.map(id => state.entities[id]);
+        let totalX = 0, totalY = 0;
+        units.forEach(u => {
+            totalX += u.position.x;
+            totalY += u.position.y;
+        });
+        const centerPos = { x: totalX / units.length, y: totalY / units.length };
+        
+        // This logic should be in a hook, but for simplicity, we assume a viewport size
+        const viewportWidth = 1000;
+        const viewportHeight = 800;
+        let newX = centerPos.x - viewportWidth / 2;
+        let newY = centerPos.y - viewportHeight / 2;
+        newX = Math.max(0, Math.min(newX, MAP_WIDTH - viewportWidth));
+        newY = Math.max(0, Math.min(newY, MAP_HEIGHT - viewportHeight));
+
+        return { ...state, selectedIds: existingIds, viewport: {x: newX, y: newY}, isChronoTeleportPending: false };
+    }
+
     case 'SET_RALLY_POINT': {
         const { buildingId, position } = action.payload;
         const building = state.entities[buildingId] as Building;
         if (!building) return state;
         const newBuilding = { ...building, rallyPoint: position };
         return { ...state, entities: { ...state.entities, [buildingId]: newBuilding }};
+    }
+
+    case 'COMMAND_REPAIR': {
+        const { unitId, targetId } = action.payload;
+        const unit = state.entities[unitId] as Unit;
+        const target = state.entities[targetId];
+        if (!unit || !target || unit.type !== UnitType.ENGINEER || target.hp >= target.maxHp) return state;
+        
+        const path = findPath(unit.position, target.position, state.terrain, unit.domain);
+        if (path) {
+            const newUnit: Unit = { ...unit, status: 'MOVING_TO_REPAIR', repairTargetId: targetId, path, targetPosition: target.position, targetId: undefined };
+            return { ...state, entities: { ...state.entities, [unitId]: newUnit }};
+        }
+        return state;
     }
 
     case 'COMMAND_GATHER': {
@@ -522,7 +636,7 @@ export function gameReducer(state: GameState, action: any): GameState {
             const entity = newState.entities[id];
             if (entity && 'status' in entity) {
                 const unit = { ...entity } as Unit;
-                if (unit.type === UnitType.CHRONO_MINER) return; // Miners can't attack-move
+                if (unit.type === UnitType.CHRONO_MINER || unit.type === UnitType.ENGINEER) return;
                 const path = findPath(unit.position, action.payload, state.terrain, unit.domain);
                 if (path) {
                     unit.path = path;
@@ -545,7 +659,7 @@ export function gameReducer(state: GameState, action: any): GameState {
             const entity = newState.entities[id];
             if (entity && 'status' in entity) {
                 const unit = { ...entity } as Unit;
-                if (unit.type === UnitType.CHRONO_MINER) return;
+                if (unit.type === UnitType.CHRONO_MINER || unit.type === UnitType.ENGINEER) return;
                 unit.status = 'ATTACKING';
                 unit.targetId = action.payload;
                 unit.targetPosition = undefined;
@@ -827,6 +941,13 @@ export function gameReducer(state: GameState, action: any): GameState {
                         });
                          newState.entities = newEntities;
                     }
+                }
+                break;
+            }
+            case 'REPAIR': {
+                const { unitIds, repairTargetId } = aiActionPayload;
+                if (unitIds && unitIds.length > 0 && repairTargetId) {
+                    newState = gameReducer(newState, { type: 'COMMAND_REPAIR', payload: { unitId: unitIds[0], targetId: repairTargetId }});
                 }
                 break;
             }

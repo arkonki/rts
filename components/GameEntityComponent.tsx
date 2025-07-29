@@ -1,9 +1,9 @@
 
-
 import React from 'react';
 import { GameEntity, Unit, Building, UnitDomain, UnitType } from '../types';
 import { ENTITY_CONFIGS } from '../constants';
 import { EntityIcon } from './icons';
+import { FaWrench } from 'react-icons/fa';
 
 const HealthBar = ({ hp, maxHp }: { hp: number; maxHp: number }) => {
     const percentage = (hp / maxHp) * 100;
@@ -28,6 +28,7 @@ export const GameEntityComponent = React.memo(({ entity, isSelected, borderColor
   const config = ENTITY_CONFIGS[type];
   const isAirUnit = !isBuilding && config.domain === UnitDomain.AIR;
   const isConstructing = 'isConstructing' in entity && entity.isConstructing;
+  const isRepairing = 'status' in entity && (entity as Unit).status === 'REPAIRING';
   
   const isChronoMiner = entity.type === UnitType.CHRONO_MINER && 'cargoAmount' in entity && config.gatherCapacity;
   const isFullMiner = isChronoMiner && (entity as Unit).cargoAmount! >= config.gatherCapacity!;
@@ -61,6 +62,11 @@ export const GameEntityComponent = React.memo(({ entity, isSelected, borderColor
         <HealthBar hp={entity.hp} maxHp={entity.maxHp} />
         {isChronoMiner && (
             <CargoBar cargo={(entity as Unit).cargoAmount || 0} capacity={config.gatherCapacity!} />
+        )}
+        {isRepairing && (
+          <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center animate-pulse">
+            <FaWrench className="w-2 h-2 text-white" />
+          </div>
         )}
       </div>
     </div>

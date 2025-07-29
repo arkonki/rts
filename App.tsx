@@ -2,7 +2,7 @@
 import React, { useReducer, useState } from 'react';
 import { INITIAL_STATE } from './state/reducer';
 import { gameReducer } from './state/reducer';
-import { MainMenu, GameOverScreen, PauseMenu, ControlsModal, SuperweaponIndicator } from './components/UI';
+import { MainMenu, GameOverScreen, PauseMenu, ControlsModal, SuperweaponIndicator, ControlGroupsBar } from './components/UI';
 import { Sidebar } from './components/Sidebar';
 import { TerrainCanvas, FogCanvas } from './components/Canvas';
 import { GameEntityComponent } from './components/GameEntityComponent';
@@ -112,6 +112,7 @@ function App() {
                 Menu
             </button>
           </div>
+          <ControlGroupsBar controlGroups={state.controlGroups} dispatch={dispatch} />
         </main>
 
         <Sidebar 

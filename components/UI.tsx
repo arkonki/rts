@@ -1,6 +1,5 @@
 
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AIDifficulty, GameStatus, AIPersonality, AIConfiguration, PlayerState, BuildingType } from '../types';
 import { soundService } from '../services/soundService';
 import { EntityIcon } from './icons';
@@ -49,6 +48,16 @@ export const MainMenu = ({ onStartGame }: { onStartGame: (options: { opponents: 
     const [opponents, setOpponents] = useState<AIConfiguration[]>([
         { id: 'AI_1', personality: 'BALANCED', difficulty: 'NORMAL' }
     ]);
+    const [soundsLoading, setSoundsLoading] = useState(true);
+    const [loadingProgress, setLoadingProgress] = useState(0);
+
+    useEffect(() => {
+        soundService.preloadSounds((progress) => {
+            setLoadingProgress(progress);
+        }).then(() => {
+            setSoundsLoading(false);
+        });
+    }, []);
     
     const addOpponent = () => {
         soundService.init(); // Initialize on first user action
@@ -59,12 +68,14 @@ export const MainMenu = ({ onStartGame }: { onStartGame: (options: { opponents: 
     };
 
     const updateOpponent = (index: number, newConfig: AIConfiguration) => {
+        soundService.init(); // Also treat this as a user interaction
         const newOpponents = [...opponents];
         newOpponents[index] = newConfig;
         setOpponents(newOpponents);
     };
 
     const removeOpponent = (index: number) => {
+        soundService.init(); // Also treat this as a user interaction
         const newOpponents = opponents.filter((_, i) => i !== index);
         // Re-assign IDs to keep them sequential
         const reindexedOpponents = newOpponents.map((opp, i) => ({ ...opp, id: `AI_${i + 1}`}));
@@ -72,6 +83,7 @@ export const MainMenu = ({ onStartGame }: { onStartGame: (options: { opponents: 
     };
     
     const handleStart = () => {
+        soundService.init(); // Ensure initialized before starting game
         onStartGame({ opponents });
     };
 
@@ -97,7 +109,9 @@ export const MainMenu = ({ onStartGame }: { onStartGame: (options: { opponents: 
             </div>
             
             <div className="w-full md:w-[450px]">
-                 <MenuButton onClick={handleStart} disabled={opponents.length === 0}>Start Game</MenuButton>
+                 <MenuButton onClick={handleStart} disabled={opponents.length === 0 || soundsLoading}>
+                    {soundsLoading ? `Loading Assets... ${Math.round(loadingProgress)}%` : 'Start Game'}
+                 </MenuButton>
             </div>
            
             <p className="text-gray-500 mt-8">A classic RTS experience</p>
@@ -138,7 +152,11 @@ export const ControlsModal = ({ onClose }: { onClose: () => void }) => (
                 <li className="flex justify-between"><span>Add to Selection</span> <span className="font-bold text-cyan-400">Shift + Left Click</span></li>
                 <li className="flex justify-between"><span>Select Multiple Units</span> <span className="font-bold text-cyan-400">Drag Left Mouse</span></li>
                 <li className="flex justify-between"><span>Move / Attack Target</span> <span className="font-bold text-cyan-400">Right Click</span></li>
+                 <li className="flex justify-between"><span>Repair (with Engineer)</span> <span className="font-bold text-cyan-400">Right Click on friendly</span></li>
                 <li className="flex justify-between"><span>Attack-Move</span> <span className="font-bold text-cyan-400">A + Left Click</span></li>
+                <li className="flex justify-between"><span>Set Control Group</span> <span className="font-bold text-cyan-400">Ctrl + 1-9</span></li>
+                <li className="flex justify-between"><span>Select Control Group</span> <span className="font-bold text-cyan-400">1-9</span></li>
+                <li className="flex justify-between"><span>Center on Group</span> <span className="font-bold text-cyan-400">Double-tap 1-9</span></li>
                 <li className="flex justify-between"><span>Set Rally Point</span> <span className="font-bold text-cyan-400">Right Click on Map</span></li>
                 <li className="flex justify-between"><span>Cancel Action</span> <span className="font-bold text-cyan-400">Escape Key</span></li>
                 <li className="flex justify-between"><span>Scroll Map</span> <span className="font-bold text-cyan-400">Mouse to Screen Edge</span></li>
@@ -178,6 +196,39 @@ export const SuperweaponIndicator = ({ playerState, onActivate }: { playerState:
                     </div>
                 </div>
             </button>
+        </div>
+    );
+};
+
+export const ControlGroupsBar = ({ controlGroups, dispatch }: { controlGroups: Record<string, string[]>, dispatch: React.Dispatch<any>}) => {
+    const [lastClick, setLastClick] = useState({key: '', time: 0});
+    
+    const handleGroupClick = (key: string) => {
+        const now = Date.now();
+        if(lastClick.key === key && now - lastClick.time < 300) {
+            dispatch({ type: 'SELECT_AND_CENTER_CONTROL_GROUP', payload: { key } });
+        } else {
+            dispatch({ type: 'SELECT_CONTROL_GROUP', payload: { key } });
+        }
+        setLastClick({key, time: now});
+        soundService.play('click', 0.3);
+    };
+
+    return (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex space-x-2 bg-black/60 p-2 rounded-lg border border-gray-600">
+            {Array.from({ length: 9 }, (_, i) => i + 1).map(num => {
+                const key = String(num);
+                const groupExists = controlGroups[key] && controlGroups[key].length > 0;
+                return (
+                    <button 
+                        key={key} 
+                        onClick={() => handleGroupClick(key)}
+                        className={`w-10 h-10 flex items-center justify-center font-bold text-lg rounded border-2 transition-colors ${groupExists ? 'bg-cyan-800 border-cyan-400 text-white' : 'bg-gray-800 border-gray-600 text-gray-500'}`}
+                    >
+                        {key}
+                    </button>
+                )
+            })}
         </div>
     );
 };

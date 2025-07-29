@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { GameState, VisualEffect, AttackVisualEffect, DamageTextEffect, ExplosionEffect, UnitType, ChronoVortexEffect, NukeImpactEffect } from '../types';
+import { GameState, VisualEffect, AttackVisualEffect, DamageTextEffect, ExplosionEffect, UnitType, ChronoVortexEffect, NukeImpactEffect, RepairTextEffect } from '../types';
 import { ENTITY_CONFIGS } from '../constants';
 
 
@@ -8,6 +8,15 @@ const DamageText = ({ effect }: { effect: DamageTextEffect }) => (
     <div
         className="absolute text-red-500 font-bold text-lg pointer-events-none z-30 damage-text-animate"
         style={{ left: effect.position.x, top: effect.position.y, textShadow: '1px 1px 2px black' }}
+    >
+        {effect.text}
+    </div>
+);
+
+const RepairText = ({ effect }: { effect: RepairTextEffect }) => (
+    <div
+        className="absolute text-green-400 font-bold text-lg pointer-events-none z-30 damage-text-animate"
+        style={{ left: effect.position.x + 10, top: effect.position.y, textShadow: '1px 1px 2px black' }}
     >
         {effect.text}
     </div>
@@ -96,6 +105,8 @@ export const VisualEffectsLayer = React.memo(({ state }: { state: GameState }) =
                 switch (effect.type) {
                     case 'DAMAGE_TEXT':
                         return <DamageText key={effect.id} effect={effect} />;
+                    case 'REPAIR_TEXT':
+                        return <RepairText key={effect.id} effect={effect} />;
                     case 'ATTACK_VISUAL':
                         return <AttackVisual key={effect.id} effect={effect} state={state} />;
                     case 'EXPLOSION':

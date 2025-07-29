@@ -1,5 +1,5 @@
 
-import { GameState, AIAction, BuildingType, UnitType, Building, PlayerId, AIConfiguration, ResourcePatch, Position, Unit, GameEntity } from '../types';
+import { GameState, AIAction, BuildingType, UnitType, Building, PlayerId, AIConfiguration, ResourcePatch, Position, Unit, GameEntity, UnitDomain } from '../types';
 import { ENTITY_CONFIGS } from '../constants';
 
 // --- AI Context and Helpers ---
@@ -13,6 +13,7 @@ interface AIContext {
     aiBuildings: Building[];
     aiUnits: Unit[];
     aiMiners: Unit[];
+    aiEngineers: Unit[];
     enemyEntities: GameEntity[];
     powerDeficit: boolean;
     hasBuilding: (type: BuildingType) => boolean;
@@ -57,6 +58,8 @@ function findBestAttackTarget(ctx: AIContext): GameEntity | null {
         BuildingType.AIRFIELD,
         BuildingType.NAVAL_YARD,
         BuildingType.BARRACKS,
+        UnitType.ENGINEER,
+        BuildingType.REPAIR_BAY,
         UnitType.CHRONO_MINER,
         BuildingType.REFINERY,
         BuildingType.POWER_PLANT,
@@ -93,6 +96,20 @@ function findBestAttackTarget(ctx: AIContext): GameEntity | null {
 }
 
 // --- High-Level AI Behaviors ---
+
+function manageRepairs(ctx: AIContext): AIAction | null {
+    const idleEngineers = ctx.aiEngineers.filter(e => e.status === 'IDLE');
+    if (idleEngineers.length === 0) return null;
+
+    const damagedEntities = ctx.allAiEntities.filter(e => e.hp < e.maxHp).sort((a,b) => (a.hp/a.maxHp) - (b.hp/b.maxHp));
+    const mostDamaged = damagedEntities[0];
+
+    if (mostDamaged) {
+        return { action: 'REPAIR', unitIds: [idleEngineers[0].id], repairTargetId: mostDamaged.id, thought: `My ${mostDamaged.type} is damaged. Sending an Engineer to fix it.`, playerId: ctx.aiPlayerId };
+    }
+
+    return null;
+}
 
 function manageEconomy(ctx: AIContext, minerTarget: number, refineryTarget: number): AIAction | null {
     // 1. Assign idle miners
@@ -137,8 +154,26 @@ function manageEconomy(ctx: AIContext, minerTarget: number, refineryTarget: numb
     return null;
 }
 
+function manageSupport(ctx: AIContext): AIAction | null {
+    const vehicleCount = ctx.aiUnits.filter(u => u.domain === UnitDomain.GROUND && u.type !== UnitType.RIFLEMAN && u.type !== UnitType.TESLA_TROOPER).length;
+
+    // Build Repair Bay
+    if (vehicleCount > 3 && !ctx.hasBuilding(BuildingType.REPAIR_BAY) && ctx.aiPlayerState.credits > ENTITY_CONFIGS[BuildingType.REPAIR_BAY].cost) {
+        return { action: 'BUILD', buildingType: BuildingType.REPAIR_BAY, thought: 'My army needs mechanical support. Building a Repair Bay.', playerId: ctx.aiPlayerId };
+    }
+
+    // Train Engineers
+    if (ctx.hasBuilding(BuildingType.BARRACKS) && ctx.aiEngineers.length < 2 && ctx.aiPlayerState.credits > ENTITY_CONFIGS[UnitType.ENGINEER].cost) {
+        const producers = ctx.getProducers(UnitType.ENGINEER);
+        if (producers.length > 0 && producers[0].productionQueue.length < 2) {
+             return { action: 'TRAIN', unitType: UnitType.ENGINEER, thought: 'I need engineers for battlefield maintenance.', playerId: ctx.aiPlayerId };
+        }
+    }
+    return null;
+}
+
 function manageMilitary(ctx: AIContext, unitComposition: Partial<Record<UnitType, number>>, armySizeTarget: number): AIAction | null {
-    const combatUnits = ctx.aiUnits.filter(u => u.type !== UnitType.CHRONO_MINER);
+    const combatUnits = ctx.aiUnits.filter(u => u.type !== UnitType.CHRONO_MINER && u.type !== UnitType.ENGINEER);
 
     // 1. Build prerequisites first
     if (!ctx.hasBuilding(BuildingType.BARRACKS) && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.BARRACKS].cost) {
@@ -225,6 +260,7 @@ export function getLocalAICommand(state: GameState, aiPlayerId: PlayerId, aiConf
         aiBuildings,
         aiUnits,
         aiMiners: aiUnits.filter(u => u.type === UnitType.CHRONO_MINER),
+        aiEngineers: aiUnits.filter(u => u.type === UnitType.ENGINEER),
         enemyEntities: Object.values(state.entities).filter(e => e.playerId !== aiPlayerId),
         powerDeficit: aiPlayerState.power.consumed + 20 > aiPlayerState.power.produced, // plan for future consumption
         hasBuilding: (type: BuildingType) => aiBuildings.some(b => b.type === type && !b.isConstructing),
@@ -243,6 +279,9 @@ export function getLocalAICommand(state: GameState, aiPlayerId: PlayerId, aiConf
             return { action: 'ATTACK', attackTargetId: attacker.id, unitIds: defenders.map(u => u.id), thought: 'My base is under attack! Defending!', playerId: aiPlayerId };
         }
     }
+
+    const repairAction = manageRepairs(ctx);
+    if (repairAction) return repairAction;
     
     // --- Personality-driven Strategy ---
     let action: AIAction | null = null;
@@ -254,12 +293,14 @@ export function getLocalAICommand(state: GameState, aiPlayerId: PlayerId, aiConf
 
         case 'ECONOMIC':
             action = manageEconomy(ctx, 5, 2) // High eco target
+                   || manageSupport(ctx)
                    || manageMilitary(ctx, { [UnitType.TANK]: 0.4, [UnitType.PRISM_TANK]: 0.3, [UnitType.APOCALYPSE_TANK]: 0.3 }, 15); // Attack late with strong units
             break;
             
         case 'BALANCED':
         default:
              action = manageEconomy(ctx, 3, 2) // Mid eco target
+                   || manageSupport(ctx)
                    || manageMilitary(ctx, { [UnitType.TESLA_TROOPER]: 0.3, [UnitType.TANK]: 0.7 }, 10); // Attack with a decent mid-game army
             break;
     }

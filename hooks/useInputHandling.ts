@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { GameState, BuildingType, Position, Unit, UnitType } from '../types';
+import { GameState, BuildingType, Position, Unit, UnitType, GameEntity } from '../types';
 import { soundService, SoundEffect } from '../services/soundService';
 
 export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>, humanPlayerId: string) {
@@ -9,6 +9,7 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartPos, setDragStartPos] = useState<Position | null>(null);
+  const [lastKeyPress, setLastKeyPress] = useState({ key: '', time: 0 });
 
   const mainRef = useRef<HTMLDivElement>(null);
   const viewportSize = useRef({ width: 0, height: 0 });
@@ -32,6 +33,30 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (state.gameStatus !== 'PLAYING') return;
+
+    // Handle number keys for control groups
+    if (!isNaN(parseInt(e.key)) && e.key !== '0') {
+      if (e.ctrlKey) {
+        // Create control group
+        soundService.play('click', 0.5);
+        dispatch({ type: 'CREATE_CONTROL_GROUP', payload: { key: e.key, ids: state.selectedIds } });
+        return; // Prevent further processing
+      } else {
+        // Select control group
+        const now = Date.now();
+        if (lastKeyPress.key === e.key && now - lastKeyPress.time < 300) {
+          // Double press
+          dispatch({ type: 'SELECT_AND_CENTER_CONTROL_GROUP', payload: { key: e.key } });
+        } else {
+          // Single press
+          dispatch({ type: 'SELECT_CONTROL_GROUP', payload: { key: e.key } });
+        }
+        setLastKeyPress({ key: e.key, time: now });
+        soundService.play('click', 0.3);
+        return;
+      }
+    }
+
     if (e.key === 'Escape') {
         setPlacingBuildingType(null);
         setAttackMovePending(false);
@@ -41,7 +66,7 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
         setAttackMovePending(true);
         setPlacingBuildingType(null);
     }
-  }, [state.selectedIds, state.entities, state.gameStatus, state.isChronoTeleportPending, dispatch]);
+  }, [state.selectedIds, state.entities, state.gameStatus, state.isChronoTeleportPending, dispatch, lastKeyPress]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -109,15 +134,26 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
     if (isAttackMovePending) { setAttackMovePending(false); return; }
 
     const mapCoords = getMapCoords(e.clientX, e.clientY);
+    const targetEntity = Object.values(state.entities).find(e => Math.hypot(mapCoords.x - e.position.x, mapCoords.y - e.position.y) < e.size / 2);
 
     if (state.isChronoTeleportPending && state.selectedIds.length > 0) {
         dispatch({ type: 'CHRONO_TELEPORT_UNITS', payload: { unitIds: state.selectedIds, targetPosition: mapCoords }});
         return;
     }
 
-    const selectedUnits = state.selectedIds.map(id => state.entities[id]).filter(Boolean) as Unit[];
-    const chronoMiners = selectedUnits.filter(u => u.type === UnitType.CHRONO_MINER);
+    const selectedUnits = state.selectedIds.map(id => state.entities[id]).filter(Boolean) as (Unit | GameEntity)[];
+    const engineers = selectedUnits.filter(u => 'type' in u && u.type === UnitType.ENGINEER) as Unit[];
 
+    // Engineer repair command
+    if (engineers.length > 0 && targetEntity && targetEntity.playerId === humanPlayerId && targetEntity.hp < targetEntity.maxHp) {
+      engineers.forEach(engineer => {
+        dispatch({ type: 'COMMAND_REPAIR', payload: { unitId: engineer.id, targetId: targetEntity.id } });
+      });
+      soundService.play('move_confirm_1', 0.4);
+      return;
+    }
+
+    const chronoMiners = selectedUnits.filter(u => 'type' in u && u.type === UnitType.CHRONO_MINER) as Unit[];
     const targetResource = Object.values(state.resourcePatches).find(p => Math.hypot(mapCoords.x - p.position.x, mapCoords.y - p.position.y) < p.size / 2);
 
     if (chronoMiners.length > 0 && targetResource) {
@@ -140,7 +176,6 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
         const randomMoveSound = moveSounds[Math.floor(Math.random() * moveSounds.length)];
         soundService.play(randomMoveSound, 0.3);
 
-        const targetEntity = Object.values(state.entities).find(e => Math.hypot(mapCoords.x - e.position.x, mapCoords.y - e.position.y) < e.size / 2);
         if (targetEntity && targetEntity.playerId !== humanPlayerId) dispatch({ type: 'COMMAND_ATTACK', payload: targetEntity.id });
         else dispatch({ type: 'COMMAND_MOVE', payload: mapCoords });
     }

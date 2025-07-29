@@ -31,7 +31,7 @@ export type SoundEffect =
 // and place them in a '/public/sounds' directory (or similar) for them to be accessible.
 const soundFiles: Record<SoundEffect, string> = {
     click: '/sounds/click.wav',
-    place_building: '/sounds/place_building.mp3',
+    place_building: 'https://maantoa.ee/audio/place_building.waw',
     unit_ready: 'https://maantoa.ee/audio/unit-reporting.mp3',
     construction_complete: '/sounds/construction_complete.mp3',
     insufficient_funds: '/sounds/insufficient_funds.mp3',
@@ -71,39 +71,72 @@ export const unitAttackSounds: Partial<Record<UnitType, SoundEffect>> = {
 class SoundService {
     private audioCache: Partial<Record<SoundEffect, HTMLAudioElement>> = {};
     private isInitialized = false;
+    private areSoundsPreloaded = false;
 
+    // This method needs to be called after a user interaction to enable audio playback.
     public init() {
         if (this.isInitialized) return;
-        
-        // Use a single user interaction to unlock the AudioContext
-        const unlockAudio = () => {
-            Object.keys(soundFiles).forEach(key => {
-                const soundName = key as SoundEffect;
-                const audio = new Audio(soundFiles[soundName]);
-                audio.load();
-                this.audioCache[soundName] = audio;
-            });
-            this.isInitialized = true;
-            console.log("Sound service initialized and audio unlocked.");
-            // Clean up the event listener once it has served its purpose
-            window.removeEventListener('click', unlockAudio);
-            window.removeEventListener('keydown', unlockAudio);
-        };
+        this.isInitialized = true;
+        console.log("Sound service initialized and ready for playback.");
+    }
 
-        window.addEventListener('click', unlockAudio, { once: true });
-        window.addEventListener('keydown', unlockAudio, { once: true });
+    // This method will preload all audio files and can be called on app load.
+    public preloadSounds(onProgress?: (progress: number) => void): Promise<void> {
+        if (this.areSoundsPreloaded) {
+            onProgress?.(100);
+            return Promise.resolve();
+        }
+        
+        return new Promise((resolve) => {
+            const soundKeys = Object.keys(soundFiles) as SoundEffect[];
+            let loadedCount = 0;
+            const totalSounds = soundKeys.length;
+
+            if (totalSounds === 0) {
+                this.areSoundsPreloaded = true;
+                onProgress?.(100);
+                resolve();
+                return;
+            }
+
+            const soundLoaded = () => {
+                loadedCount++;
+                onProgress?.((loadedCount / totalSounds) * 100);
+                if (loadedCount === totalSounds) {
+                    this.areSoundsPreloaded = true;
+                    console.log("All sounds preloaded.");
+                    resolve();
+                }
+            };
+            
+            soundKeys.forEach(key => {
+                const audio = new Audio(soundFiles[key]);
+                this.audioCache[key] = audio;
+                
+                audio.addEventListener('canplaythrough', () => soundLoaded(), { once: true });
+                audio.addEventListener('error', () => {
+                    console.warn(`Failed to load sound: ${key} at ${soundFiles[key]}`);
+                    soundLoaded(); // Count it as "loaded" to not block the app.
+                });
+                audio.load();
+            });
+        });
     }
 
     public play(sound: SoundEffect, volume = 0.5) {
         if (!this.isInitialized) {
-            // It's possible play is called before the user has clicked, so we don't warn
+            console.warn(`Sound service not initialized. Call init() on first user interaction.`);
             return;
         }
         const audio = this.audioCache[sound];
         if (audio) {
+            // Cloning the node allows for playing the same sound multiple times simultaneously.
             const newAudioInstance = audio.cloneNode() as HTMLAudioElement;
             newAudioInstance.volume = volume;
-            newAudioInstance.play().catch(e => { /* Autoplay errors are common, fail silently */ });
+            newAudioInstance.play().catch(e => { 
+                // Autoplay errors are common before user interaction, fail silently.
+                // The first user-initiated play should succeed and unlock audio.
+            });
         } else {
             console.warn(`Sound not found in cache: ${sound}`);
         }
