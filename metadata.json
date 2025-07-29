@@ -1,0 +1,6 @@
+{
+  "name": "Gemini RTS: Red Alert",
+  "description": "A simplified real-time strategy game inspired by classics like Command & Conquer: Red Alert, featuring a dynamic AI opponent powered by the Gemini API.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
