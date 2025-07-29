@@ -1,64 +1,57 @@
 
-import { useEffect, useRef } from 'react';
-import { GameState } from '../types';
+import { useEffect, useState, useRef } from 'react';
+import { GameState, PlayerId } from '../types';
 import { getAICommand } from '../services/geminiService';
-import { getLocalAICommand } from '../services/localAIService';
 
 export function useAI(state: GameState, dispatch: React.Dispatch<any>) {
-  const isThinkingRef = useRef(false);
+  // Use a state to track which AIs have a pending API request.
+  const [thinkingAIs, setThinkingAIs] = useState<Set<PlayerId>>(new Set());
+  
+  // Use a ref to get the latest state inside the async function without adding it as a dependency.
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  });
 
   useEffect(() => {
-    if (state.gameStatus !== 'PLAYING' || isThinkingRef.current) {
+    if (state.gameStatus !== 'PLAYING') {
       return;
     }
     
-    // Find the first AI opponent that is ready to act
-    const readyAI = state.aiOpponents.find(opp => {
-        const playerState = state.players[opp.id];
-        return playerState && playerState.aiActionCooldown <= 0;
-    });
+    // Check all AI opponents
+    state.aiOpponents.forEach(aiConfig => {
+      const playerState = state.players[aiConfig.id];
 
-    if (!readyAI) {
-        return;
-    }
-    
-    isThinkingRef.current = true;
-    const aiPlayerId = readyAI.id;
-
-    if (readyAI.type === 'LOCAL') {
-        const action = getLocalAICommand(state, aiPlayerId, readyAI);
-        dispatch({ type: 'PERFORM_AI_ACTION', payload: action });
-        isThinkingRef.current = false;
-    } else { // GEMINI
-        let isCancelled = false;
+      // Condition to act: player exists, cooldown is over, and not already thinking.
+      if (playerState && playerState.aiActionCooldown <= 0 && !thinkingAIs.has(aiConfig.id)) {
         
-        const fetchAIAction = async () => {
-          dispatch({ type: 'AI_THINKING', payload: { playerId: aiPlayerId } });
-          
+        // Add this AI to the "thinking" set to prevent duplicate requests.
+        setThinkingAIs(prev => new Set(prev).add(aiConfig.id));
+
+        const fetchAICommand = async (id: PlayerId) => {
           try {
-            const action = await getAICommand(state, aiPlayerId, readyAI);
-            if (!isCancelled) {
-              dispatch({ type: 'PERFORM_AI_ACTION', payload: action });
-            }
-          } catch (e) {
-            console.error("AI action failed:", e);
-            if (!isCancelled) {
-              dispatch({ type: 'PERFORM_AI_ACTION', payload: { action: 'IDLE', thought: 'A critical error occurred in my command module.', playerId: aiPlayerId } });
-            }
+            // Use the state from the ref to ensure it's the most current.
+            const action = await getAICommand(stateRef.current, id, aiConfig);
+            dispatch({ type: 'PERFORM_AI_ACTION', payload: action });
+          } catch (error) {
+            console.error(`Failed to get AI command for ${id}:`, error);
+            // Dispatch an idle action to prevent the AI from getting stuck.
+            dispatch({ type: 'PERFORM_AI_ACTION', payload: { action: 'IDLE', thought: 'Critical error fetching command.', playerId: id } });
           } finally {
-            if(!isCancelled) {
-                isThinkingRef.current = false;
-            }
+            // Once the request is complete (success or fail), remove the AI from the thinking set.
+            setThinkingAIs(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(id);
+              return newSet;
+            });
           }
         };
 
-        fetchAIAction();
+        fetchAICommand(aiConfig.id);
+      }
+    });
 
-        return () => {
-          isCancelled = true;
-          isThinkingRef.current = false;
-        };
-    }
-
-  }, [state.gameStatus, state.players, state.aiOpponents, state, dispatch]);
+  // Dependencies: The effect should run when the game status or player cooldowns change.
+  // We don't need the full 'state' object here to avoid excessive re-runs.
+  }, [state.gameStatus, state.players, state.aiOpponents, dispatch, thinkingAIs]);
 }

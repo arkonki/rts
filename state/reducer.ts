@@ -756,17 +756,10 @@ export function gameReducer(state: GameState, action: any): GameState {
 
       return finalState;
     }
-    case 'AI_THINKING': {
-        const { playerId } = action.payload;
-        const newPlayerState = { ...state.players[playerId], aiActionCooldown: 999999 };
-        return {
-            ...state,
-            players: { ...state.players, [playerId]: newPlayerState },
-            lastMessage: `${playerId} is thinking...`,
-        };
-    }
+
     case 'PERFORM_AI_ACTION': {
-        const { playerId, action: aiAction, thought, unitType, buildingType, attackTargetId, unitIds, error, targetPosition, gatherTargetId } = action.payload as AIAction;
+        const aiActionPayload = action.payload as AIAction;
+        const { playerId, action: aiActionType, thought } = aiActionPayload;
         let newState = { ...state };
         let message = `${playerId}: ${thought || 'Taking action...'}`;
         
@@ -774,94 +767,98 @@ export function gameReducer(state: GameState, action: any): GameState {
         const aiConfig = newState.aiOpponents.find(o => o.id === playerId);
         if(!aiPlayerState || !aiConfig) return state;
 
-        if (!error) {
-            switch(aiAction) {
-                case 'BUILD': {
-                     if(buildingType) {
-                        const config = ENTITY_CONFIGS[buildingType];
-                        const hq = newState.entities[aiPlayerState.hqId];
-                        if (hq && aiPlayerState.credits >= config.cost) {
-                            const placementPosition = findBuildPlacement(buildingType, Object.values(newState.entities).filter(e => e.playerId === playerId), hq.position, newState.terrain);
-                            
-                            if(placementPosition) {
-                                const newAiPlayerState = { ...aiPlayerState, credits: aiPlayerState.credits - config.cost };
-                                const newId = `${playerId}_${buildingType.toLowerCase()}_${Date.now()}`;
-                                const newBuilding: Building = {
-                                    id: newId, type: buildingType, playerId: playerId, hp: 1, maxHp: config.hp,
-                                    position: placementPosition, size: config.size, isPowered: false, 
-                                    productionQueue: [], productionProgress: 0, isConstructing: true,
-                                };
-                                newState.entities = { ...newState.entities, [newId]: newBuilding };
-                                newState.players[playerId] = newAiPlayerState;
-                            } else {
-                                message = thought + ` (Failed to find a spot!)`;
-                            }
-                        }
-                     }
-                    break;
-                }
-                case 'TRAIN': {
-                    if(unitType) {
-                        const config = ENTITY_CONFIGS[unitType];
-                        const producerType = config.producedBy;
+        switch(aiActionType) {
+            case 'BUILD': {
+                 const { buildingType } = aiActionPayload;
+                 if(buildingType) {
+                    const config = ENTITY_CONFIGS[buildingType];
+                    const hq = newState.entities[aiPlayerState.hqId];
+                    if (hq && aiPlayerState.credits >= config.cost) {
+                        const placementPosition = findBuildPlacement(buildingType, Object.values(newState.entities).filter(e => e.playerId === playerId), hq.position, newState.terrain);
                         
-                        if (producerType) {
-                             const producer = Object.values(newState.entities).find(e => e.playerId === playerId && e.type === producerType && 'isPowered' in e && (e as Building).isPowered) as Building;
-
-                            if(producer && aiPlayerState.credits >= config.cost && producer.productionQueue.length < 5) {
-                                const newAiPlayerState = { ...aiPlayerState, credits: aiPlayerState.credits - config.cost };
-                                const newProducer = { ...producer, productionQueue: [...producer.productionQueue, unitType] };
-                                newState.entities[producer.id] = newProducer;
-                                newState.players[playerId] = newAiPlayerState;
-                            }
+                        if(placementPosition) {
+                            const newAiPlayerState = { ...aiPlayerState, credits: aiPlayerState.credits - config.cost };
+                            const newId = `${playerId}_${buildingType.toLowerCase()}_${Date.now()}`;
+                            const newBuilding: Building = {
+                                id: newId, type: buildingType, playerId: playerId, hp: 1, maxHp: config.hp,
+                                position: placementPosition, size: config.size, isPowered: false, 
+                                productionQueue: [], productionProgress: 0, isConstructing: true,
+                            };
+                            newState.entities = { ...newState.entities, [newId]: newBuilding };
+                            newState.players[playerId] = newAiPlayerState;
+                        } else {
+                            message = thought + ` (Failed to find a spot!)`;
                         }
                     }
-                    break;
-                }
-                case 'ATTACK': {
-                    if(attackTargetId && newState.entities[attackTargetId]) {
-                        const attackers = (unitIds && unitIds.length > 0 ? unitIds.map(id => newState.entities[id]).filter(Boolean) : Object.values(newState.entities).filter(e => e.playerId === playerId && 'status' in e && e.type !== UnitType.CHRONO_MINER)) as Unit[];
-                        if (attackers.length > 0) {
-                            const newEntities = { ...newState.entities };
-                            attackers.forEach(entity => {
-                               const unit = newEntities[entity.id];
-                               if(unit && 'status' in unit) {
-                                 const newUnit = {...unit, status: 'ATTACKING', targetId: attackTargetId, targetPosition: undefined, path: undefined} as Unit;
-                                 newEntities[unit.id] = newUnit;
-                               }
-                            });
-                             newState.entities = newEntities;
-                        }
-                    }
-                    break;
-                }
-                case 'GATHER': {
-                    if (unitIds && unitIds.length > 0 && gatherTargetId) {
-                        const minerId = unitIds[0];
-                        const miner = newState.entities[minerId];
-                        const resource = newState.resourcePatches[gatherTargetId];
-                        if (miner && resource && 'status' in miner && miner.type === UnitType.CHRONO_MINER) {
-                            newState = gameReducer(newState, { type: 'COMMAND_GATHER', payload: { unitId: miner.id, resourceId: resource.id }});
-                        }
-                    }
-                    break;
-                }
-                case 'LAUNCH_SUPERWEAPON': {
-                    if (targetPosition) {
-                        newState = gameReducer(newState, { type: 'LAUNCH_NUKE', payload: { playerId, targetPosition }});
-                    }
-                    break;
-                }
-                case 'IDLE':
-                    break;
+                 }
+                break;
             }
+            case 'TRAIN': {
+                const { unitType } = aiActionPayload;
+                if(unitType) {
+                    const config = ENTITY_CONFIGS[unitType];
+                    const producerType = config.producedBy;
+                    
+                    if (producerType) {
+                         const producer = Object.values(newState.entities).find(e => e.playerId === playerId && e.type === producerType && 'isPowered' in e && (e as Building).isPowered) as Building;
+
+                        if(producer && aiPlayerState.credits >= config.cost && producer.productionQueue.length < 5) {
+                            const newAiPlayerState = { ...aiPlayerState, credits: aiPlayerState.credits - config.cost };
+                            const newProducer = { ...producer, productionQueue: [...producer.productionQueue, unitType] };
+                            newState.entities[producer.id] = newProducer;
+                            newState.players[playerId] = newAiPlayerState;
+                        }
+                    }
+                }
+                break;
+            }
+            case 'ATTACK': {
+                const { attackTargetId, unitIds } = aiActionPayload;
+                if(attackTargetId && newState.entities[attackTargetId]) {
+                    const attackers = (unitIds && unitIds.length > 0 ? unitIds.map(id => newState.entities[id]).filter(Boolean) : Object.values(newState.entities).filter(e => e.playerId === playerId && 'status' in e && e.type !== UnitType.CHRONO_MINER)) as Unit[];
+                    if (attackers.length > 0) {
+                        const newEntities = { ...newState.entities };
+                        attackers.forEach(entity => {
+                           const unit = newEntities[entity.id];
+                           if(unit && 'status' in unit) {
+                             const newUnit = {...unit, status: 'ATTACKING', targetId: attackTargetId, targetPosition: undefined, path: undefined} as Unit;
+                             newEntities[unit.id] = newUnit;
+                           }
+                        });
+                         newState.entities = newEntities;
+                    }
+                }
+                break;
+            }
+            case 'GATHER': {
+                const { unitIds, gatherTargetId } = aiActionPayload;
+                if (unitIds && unitIds.length > 0 && gatherTargetId) {
+                    const minerId = unitIds[0];
+                    const miner = newState.entities[minerId];
+                    const resource = newState.resourcePatches[gatherTargetId];
+                    if (miner && resource && 'status' in miner && miner.type === UnitType.CHRONO_MINER) {
+                        newState = gameReducer(newState, { type: 'COMMAND_GATHER', payload: { unitId: miner.id, resourceId: resource.id }});
+                    }
+                }
+                break;
+            }
+            case 'LAUNCH_SUPERWEAPON': {
+                const { targetPosition } = aiActionPayload;
+                if (targetPosition) {
+                    newState = gameReducer(newState, { type: 'LAUNCH_NUKE', payload: { playerId, targetPosition }});
+                }
+                break;
+            }
+            case 'IDLE':
+                break;
         }
 
         let newCooldown = DIFFICULTY_SETTINGS[aiConfig.difficulty].decisionInterval;
-        if (error === 'RATE_LIMIT') {
-            newCooldown = 30000; // 30 second backoff for rate limiting
+        // If the API returned a rate limit error, double the cooldown to back off.
+        if (aiActionPayload.error === 'RATE_LIMIT') {
+            newCooldown *= 2;
+            message = `${playerId}: Command servers overloaded. Backing off...`;
         }
-
         const newPlayerState = { ...newState.players[playerId], aiActionCooldown: newCooldown };
         
         return { ...newState, players: {...newState.players, [playerId]: newPlayerState }, lastMessage: message };

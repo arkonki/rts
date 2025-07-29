@@ -52,7 +52,6 @@ export enum FogState {
 }
 
 export type AIDifficulty = 'EASY' | 'NORMAL' | 'HARD';
-export type AIType = 'LOCAL' | 'GEMINI';
 export type AIPersonality = 'BALANCED' | 'AGGRESSIVE' | 'ECONOMIC';
 
 export interface Position {
@@ -164,10 +163,8 @@ export type VisualEffect = DamageTextEffect | AttackVisualEffect | ExplosionEffe
 
 export interface AIConfiguration {
     id: PlayerId;
-    type: AIType;
     personality: AIPersonality;
     difficulty: AIDifficulty;
-    apiKey: string | null;
 }
 
 export interface GameState {
@@ -198,7 +195,7 @@ export interface AIAction {
     unitIds?: string[];
     targetPosition?: Position; // For superweapon
     gatherTargetId?: string; // For GATHER action
-    error?: 'RATE_LIMIT' | 'GENERAL';
+    error?: 'RATE_LIMIT';
 }
 
 export interface EntityConfig {

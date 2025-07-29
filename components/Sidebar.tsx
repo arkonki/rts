@@ -200,7 +200,7 @@ export const Sidebar = ({ playerState, state, dispatch, viewportSize, setPlacing
           <div className="flex-1 overflow-y-auto p-1 bg-black/20 rounded-b-md">
               {renderProductionPanel()}
           </div>
-          <footer className="text-xs text-center text-gray-500"> Gemini RTS v1.4 </footer>
+          <footer className="text-xs text-center text-gray-500"> AI RTS v1.5 </footer>
         </aside>
     );
 };

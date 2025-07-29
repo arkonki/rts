@@ -1,255 +1,268 @@
 
-import { GameState, AIAction, BuildingType, UnitType, Building, PlayerId, AIConfiguration, ResourcePatch, Position, Unit } from '../types';
+import { GameState, AIAction, BuildingType, UnitType, Building, PlayerId, AIConfiguration, ResourcePatch, Position, Unit, GameEntity } from '../types';
 import { ENTITY_CONFIGS } from '../constants';
 
-function findNearestResourcePatch(position: Position, patches: Record<string, ResourcePatch>, assignedPatches: Set<string>): ResourcePatch | null {
-    let nearest: ResourcePatch | null = null;
+// --- AI Context and Helpers ---
+
+interface AIContext {
+    aiPlayerId: PlayerId;
+    aiConfig: AIConfiguration;
+    gameState: GameState;
+    aiPlayerState: GameState['players'][string];
+    allAiEntities: GameEntity[];
+    aiBuildings: Building[];
+    aiUnits: Unit[];
+    aiMiners: Unit[];
+    enemyEntities: GameEntity[];
+    powerDeficit: boolean;
+    hasBuilding: (type: BuildingType) => boolean;
+    countBuilding: (type: BuildingType) => number;
+    getProducers: (unitType: UnitType) => Building[];
+}
+
+function findNearestEntity(position: Position, entities: GameEntity[]): GameEntity | null {
+    let nearest: GameEntity | null = null;
     let minDist = Infinity;
-    Object.values(patches).forEach(p => {
-        if (assignedPatches.has(p.id)) return;
-        const dist = Math.hypot(p.position.x - position.x, p.position.y - position.y);
+    entities.forEach(e => {
+        const dist = Math.hypot(e.position.x - position.x, e.position.y - position.y);
         if (dist < minDist) {
             minDist = dist;
-            nearest = p;
+            nearest = e;
         }
     });
     return nearest;
 }
 
-const getAggressiveAICommand = (state: GameState, aiPlayerId: PlayerId): AIAction => {
-    const { entities, players, resourcePatches } = state;
-    const aiPlayerState = players[aiPlayerId];
-    const aiEntities = Object.values(entities).filter(e => e.playerId === aiPlayerId);
-    const aiBuildings = aiEntities.filter(e => 'isPowered' in e) as Building[];
-    const aiUnits = aiEntities.filter(e => 'status' in e);
-    const hasBuilding = (type: BuildingType) => aiBuildings.some(b => b.type === type);
-    
-    // 1. Attack! If we have more than 5 units, send them.
-    const combatUnits = aiUnits.filter(u => u.type !== UnitType.CHRONO_MINER);
-    if (combatUnits.length >= 5) {
-        const enemyHQs = Object.values(entities).filter(e => e.playerId !== aiPlayerId && e.type === BuildingType.HQ);
-        if (enemyHQs.length > 0) {
-            const targetHQ = enemyHQs[Math.floor(Math.random() * enemyHQs.length)];
-            return { action: 'ATTACK', attackTargetId: targetHQ.id, thought: "Unleash the horde!", unitIds: combatUnits.map(u => u.id), playerId: aiPlayerId };
+function isBaseUnderAttack(ctx: AIContext): { underAttack: boolean; attacker: GameEntity | null } {
+    for (const enemy of ctx.enemyEntities) {
+        if ('status' in enemy && (enemy as Unit).status === 'ATTACKING') {
+            const target = ctx.gameState.entities[(enemy as Unit).targetId!];
+            if (target && target.playerId === ctx.aiPlayerId && 'isPowered' in target) {
+                 return { underAttack: true, attacker: enemy };
+            }
         }
     }
-    
-    // 2. Power up if needed for barracks/factory
-    const powerDeficit = aiPlayerState.power.consumed > aiPlayerState.power.produced;
-    if (powerDeficit && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.POWER_PLANT].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.POWER_PLANT, thought: "Need power for the war machine.", playerId: aiPlayerId };
-    }
-
-    // 3. Build Barracks -> War Factory
-    if (!hasBuilding(BuildingType.BARRACKS) && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.BARRACKS].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.BARRACKS, thought: "Let's get some boots on the ground.", playerId: aiPlayerId };
-    }
-    if (hasBuilding(BuildingType.BARRACKS) && !hasBuilding(BuildingType.WAR_FACTORY) && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.WAR_FACTORY].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.WAR_FACTORY, thought: "Need a factory to build harvesters.", playerId: aiPlayerId };
-    }
-
-    // 4. Manage economy
-    const aiMiners = aiUnits.filter(u => u.type === UnitType.CHRONO_MINER) as Unit[];
-    const idleMiners = aiMiners.filter(u => u.status === 'IDLE');
-    if (idleMiners.length > 0) {
-        const assignedPatches = new Set(aiMiners.map(m => m.gatherTargetId).filter(Boolean));
-        const nearestPatch = findNearestResourcePatch(idleMiners[0].position, resourcePatches, assignedPatches);
-        if (nearestPatch) {
-            return { action: 'GATHER', unitIds: [idleMiners[0].id], gatherTargetId: nearestPatch.id, thought: 'Mining for the glorious war effort.', playerId: aiPlayerId };
-        }
-    }
-    if (hasBuilding(BuildingType.WAR_FACTORY) && aiMiners.length < 2 && aiPlayerState.credits >= ENTITY_CONFIGS[UnitType.CHRONO_MINER].cost) {
-        return { action: 'TRAIN', unitType: UnitType.CHRONO_MINER, thought: 'Need money to make soldiers.', playerId: aiPlayerId };
-    }
-
-
-    // 5. Spam Riflemen
-    if (hasBuilding(BuildingType.BARRACKS) && aiPlayerState.credits >= ENTITY_CONFIGS[UnitType.RIFLEMAN].cost) {
-        const barracks = aiBuildings.find(b => b.type === BuildingType.BARRACKS && b.productionQueue.length < 5);
-        if (barracks) {
-            return { action: 'TRAIN', unitType: UnitType.RIFLEMAN, thought: "More... MORE!", playerId: aiPlayerId };
-        }
-    }
-
-    // 6. Build refinery if we have nothing else to do.
-     if (!hasBuilding(BuildingType.REFINERY) && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.REFINERY].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.REFINERY, thought: "I guess I need a place to drop off the cash.", playerId: aiPlayerId };
-    }
-    
-    return { action: 'IDLE', thought: "Conserving energy for the next assault.", playerId: aiPlayerId };
+    return { underAttack: false, attacker: null };
 }
 
-const getEconomicAICommand = (state: GameState, aiPlayerId: PlayerId): AIAction => {
-    const { entities, players, resourcePatches } = state;
-    const aiPlayerState = players[aiPlayerId];
-    const aiEntities = Object.values(entities).filter(e => e.playerId === aiPlayerId);
-    const aiBuildings = aiEntities.filter(e => 'isPowered' in e) as Building[];
-    const aiUnits = aiEntities.filter(e => 'status' in e);
-    const hasBuilding = (type: BuildingType) => aiBuildings.some(b => b.type === type);
-    const countBuilding = (type: BuildingType) => aiBuildings.filter(b => b.type === type).length;
-    
-    // 1. Launch Nuke if ready
-    if (aiPlayerState.superweapon?.isReady) {
-        const enemyHQs = Object.values(entities).filter(e => e.playerId !== aiPlayerId && e.type === BuildingType.HQ);
-        if(enemyHQs.length > 0) {
-            return { action: 'LAUNCH_SUPERWEAPON', targetPosition: enemyHQs[0].position, thought: "Nuclear launch detected.", playerId: aiPlayerId };
+function findBestAttackTarget(ctx: AIContext): GameEntity | null {
+    if (ctx.enemyEntities.length === 0) return null;
+
+    const targetPriority = [
+        BuildingType.NUCLEAR_MISSILE_SILO,
+        BuildingType.CHRONO_SPHERE,
+        UnitType.PRISM_TANK,
+        UnitType.APOCALYPSE_TANK,
+        BuildingType.WAR_FACTORY,
+        BuildingType.AIRFIELD,
+        BuildingType.NAVAL_YARD,
+        BuildingType.BARRACKS,
+        UnitType.CHRONO_MINER,
+        BuildingType.REFINERY,
+        BuildingType.POWER_PLANT,
+        BuildingType.HQ,
+    ];
+
+    let bestTarget: GameEntity | null = null;
+    let highestScore = -1;
+
+    for (const enemy of ctx.enemyEntities) {
+        let score = 10; // Base score for any target
+        const priorityIndex = targetPriority.indexOf(enemy.type as any);
+        if (priorityIndex !== -1) {
+            score += (targetPriority.length - priorityIndex) * 10;
         }
-    }
-
-    // 2. Always have enough power
-    const powerDeficit = (aiPlayerState.power.consumed + 150) > aiPlayerState.power.produced;
-    if (powerDeficit && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.POWER_PLANT].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.POWER_PLANT, thought: "A solid power grid is the foundation of an empire.", playerId: aiPlayerId };
-    }
-
-    // 3. Build up to 2 Refineries then a War Factory
-    if (countBuilding(BuildingType.REFINERY) < 2 && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.REFINERY].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.REFINERY, thought: "Expanding my economic infrastructure.", playerId: aiPlayerId };
-    }
-     if (!hasBuilding(BuildingType.WAR_FACTORY) && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.WAR_FACTORY].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.WAR_FACTORY, thought: "Unlocking vehicle production.", playerId: aiPlayerId };
-    }
-
-    // 4. Manage Miners
-    const aiMiners = aiUnits.filter(u => u.type === UnitType.CHRONO_MINER) as Unit[];
-    const idleMiners = aiMiners.filter(u => u.status === 'IDLE');
-    if (idleMiners.length > 0) {
-        const assignedPatches = new Set(aiMiners.map(m => m.gatherTargetId).filter(Boolean));
-        const nearestPatch = findNearestResourcePatch(idleMiners[0].position, resourcePatches, assignedPatches);
-        if (nearestPatch) {
-            return { action: 'GATHER', unitIds: [idleMiners[0].id], gatherTargetId: nearestPatch.id, thought: 'Securing more resources.', playerId: aiPlayerId };
+        
+        // Add score for low health
+        score += (1 - (enemy.hp / enemy.maxHp)) * 20;
+        
+        // Prioritize closer targets
+        const hq = ctx.gameState.entities[ctx.aiPlayerState.hqId];
+        if (hq) {
+             const dist = Math.hypot(enemy.position.x - hq.position.x, enemy.position.y - hq.position.y);
+             score -= dist / 100;
         }
-    }
-    if (hasBuilding(BuildingType.WAR_FACTORY) && aiMiners.length < 4 && aiPlayerState.credits >= ENTITY_CONFIGS[UnitType.CHRONO_MINER].cost) {
-        return { action: 'TRAIN', unitType: UnitType.CHRONO_MINER, thought: 'The economy must grow.', playerId: aiPlayerId };
-    }
 
-    // 5. Tech up to Nuke
-    if (!hasBuilding(BuildingType.BARRACKS) && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.BARRACKS].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.BARRACKS, thought: "Establishing basic military production.", playerId: aiPlayerId };
-    }
-    if (hasBuilding(BuildingType.WAR_FACTORY) && !hasBuilding(BuildingType.NUCLEAR_MISSILE_SILO) && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.NUCLEAR_MISSILE_SILO].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.NUCLEAR_MISSILE_SILO, thought: "The ultimate power is nearly mine.", playerId: aiPlayerId };
-    }
-    
-    // 6. Attack only when strong
-    const combatUnits = aiUnits.filter(u => u.type !== UnitType.CHRONO_MINER);
-    if (combatUnits.length >= 15) {
-        const enemyHQs = Object.values(entities).filter(e => e.playerId !== aiPlayerId && e.type === BuildingType.HQ);
-        if (enemyHQs.length > 0) {
-            const targetHQ = enemyHQs[Math.floor(Math.random() * enemyHQs.length)];
-            return { action: 'ATTACK', attackTargetId: targetHQ.id, thought: "The time is now. Unleash the iron fist!", unitIds: combatUnits.map(u => u.id), playerId: aiPlayerId };
+        if (score > highestScore) {
+            highestScore = score;
+            bestTarget = enemy;
         }
     }
     
-    // 7. Build expensive units if possible
-    if (hasBuilding(BuildingType.WAR_FACTORY) && aiPlayerState.credits >= ENTITY_CONFIGS[UnitType.APOCALYPSE_TANK].cost) {
-        const factory = aiBuildings.find(b => b.type === BuildingType.WAR_FACTORY && b.productionQueue.length < 2);
-        if (factory) {
-            return { action: 'TRAIN', unitType: UnitType.APOCALYPSE_TANK, thought: "Forging the ultimate weapon.", playerId: aiPlayerId };
-        }
-    }
-    if (hasBuilding(BuildingType.WAR_FACTORY) && aiPlayerState.credits >= ENTITY_CONFIGS[UnitType.TANK].cost) {
-        const factory = aiBuildings.find(b => b.type === BuildingType.WAR_FACTORY && b.productionQueue.length < 5);
-        if (factory) {
-            return { action: 'TRAIN', unitType: UnitType.TANK, thought: "A good, solid tank.", playerId: aiPlayerId };
-        }
-    }
-
-    return { action: 'IDLE', thought: "Patience. The economy must grow.", playerId: aiPlayerId };
+    return bestTarget || findNearestEntity(ctx.allAiEntities[0].position, ctx.enemyEntities);
 }
 
-const getBalancedAICommand = (state: GameState, aiPlayerId: PlayerId): AIAction => {
-    const { entities, players, resourcePatches } = state;
-    const aiPlayerState = players[aiPlayerId];
-    const aiEntities = Object.values(entities).filter(e => e.playerId === aiPlayerId);
-    const aiBuildings = aiEntities.filter(e => 'isPowered' in e) as Building[];
-    const aiUnits = aiEntities.filter(e => 'status' in e);
-    const hasBuilding = (type: BuildingType) => aiBuildings.some(b => b.type === type);
-    const countBuilding = (type: BuildingType) => aiBuildings.filter(b => b.type === type).length;
-    
-    // 1. Nuke if ready!
-    if (aiPlayerState.superweapon?.isReady) {
-        const enemyHQs = Object.values(entities).filter(e => e.playerId !== aiPlayerId && e.type === BuildingType.HQ);
-        if(enemyHQs.length > 0) {
-            return { action: 'LAUNCH_SUPERWEAPON', targetPosition: enemyHQs[0].position, thought: "Delivering the final payload.", playerId: aiPlayerId };
-        }
-    }
+// --- High-Level AI Behaviors ---
 
-    // 2. Power Management
-    const powerDeficit = aiPlayerState.power.consumed > aiPlayerState.power.produced;
-    if (powerDeficit && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.POWER_PLANT].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.POWER_PLANT, thought: "I need more power.", playerId: aiPlayerId };
-    }
-
-    // 3. Economy
-    if (countBuilding(BuildingType.REFINERY) < 1 && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.REFINERY].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.REFINERY, thought: "Expanding my economy is crucial.", playerId: aiPlayerId };
-    }
-    if (hasBuilding(BuildingType.REFINERY) && !hasBuilding(BuildingType.WAR_FACTORY) && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.WAR_FACTORY].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.WAR_FACTORY, thought: "I need a War Factory to build harvesters.", playerId: aiPlayerId };
-    }
-
-    // 4. Manage Miners
-    const aiMiners = aiUnits.filter(u => u.type === UnitType.CHRONO_MINER) as Unit[];
-    const idleMiners = aiMiners.filter(u => u.status === 'IDLE');
+function manageEconomy(ctx: AIContext, minerTarget: number, refineryTarget: number): AIAction | null {
+    // 1. Assign idle miners
+    const idleMiners = ctx.aiMiners.filter(u => u.status === 'IDLE');
     if (idleMiners.length > 0) {
-        const assignedPatches = new Set(aiMiners.map(m => m.gatherTargetId).filter(Boolean));
-        const nearestPatch = findNearestResourcePatch(idleMiners[0].position, resourcePatches, assignedPatches);
+        const assignedPatches = new Set(ctx.aiMiners.map(m => m.gatherTargetId).filter(Boolean));
+        let nearestPatch: ResourcePatch | null = null;
+        let minDist = Infinity;
+        
+        Object.values(ctx.gameState.resourcePatches).forEach(p => {
+             if (assignedPatches.has(p.id)) return;
+             const dist = Math.hypot(p.position.x - idleMiners[0].position.x, p.position.y - idleMiners[0].position.y);
+             if (dist < minDist) {
+                minDist = dist;
+                nearestPatch = p;
+             }
+        });
+        
         if (nearestPatch) {
-            return { action: 'GATHER', unitIds: [idleMiners[0].id], gatherTargetId: nearestPatch.id, thought: 'Getting resources.', playerId: aiPlayerId };
-        }
-    }
-     if (hasBuilding(BuildingType.WAR_FACTORY) && aiMiners.length < 3 && aiPlayerState.credits >= ENTITY_CONFIGS[UnitType.CHRONO_MINER].cost) {
-        return { action: 'TRAIN', unitType: UnitType.CHRONO_MINER, thought: 'A healthy economy is a strong economy.', playerId: aiPlayerId };
-    }
-
-    
-    // 5. Tech Up
-    if (!hasBuilding(BuildingType.BARRACKS) && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.BARRACKS].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.BARRACKS, thought: "Time to train some infantry.", playerId: aiPlayerId };
-    }
-     if (hasBuilding(BuildingType.WAR_FACTORY) && !hasBuilding(BuildingType.NUCLEAR_MISSILE_SILO) && aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.NUCLEAR_MISSILE_SILO].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.NUCLEAR_MISSILE_SILO, thought: "Initiating doomsday protocol.", playerId: aiPlayerId };
-    }
-    
-    // 6. Attack
-    const combatUnits = aiUnits.filter(u => u.type !== UnitType.CHRONO_MINER);
-    if (combatUnits.length >= 10) {
-        const enemyHQs = Object.values(entities).filter(e => e.playerId !== aiPlayerId && e.type === BuildingType.HQ);
-        if (enemyHQs.length > 0) {
-            const targetHQ = enemyHQs[Math.floor(Math.random() * enemyHQs.length)];
-            return { action: 'ATTACK', attackTargetId: targetHQ.id, thought: `My army is ready. Attacking an enemy base!`, unitIds: combatUnits.map(u => u.id), playerId: aiPlayerId };
-        }
-    }
-
-    // 7. Train Units (mix of infantry and tanks)
-    if (hasBuilding(BuildingType.WAR_FACTORY) && aiPlayerState.credits >= ENTITY_CONFIGS[UnitType.TANK].cost && aiUnits.filter(u => u.type === UnitType.TANK).length < 5) {
-        const factory = aiBuildings.find(b => b.type === BuildingType.WAR_FACTORY && b.productionQueue.length < 3);
-        if (factory) {
-            return { action: 'TRAIN', unitType: UnitType.TANK, thought: "Rolling out a new tank.", playerId: aiPlayerId };
-        }
-    }
-    if (hasBuilding(BuildingType.BARRACKS) && aiPlayerState.credits >= ENTITY_CONFIGS[UnitType.RIFLEMAN].cost) {
-        const barracks = aiBuildings.find(b => b.type === BuildingType.BARRACKS && b.productionQueue.length < 5);
-        if (barracks) {
-            return { action: 'TRAIN', unitType: UnitType.RIFLEMAN, thought: "Reinforcing my army.", playerId: aiPlayerId };
+            return { action: 'GATHER', unitIds: [idleMiners[0].id], gatherTargetId: nearestPatch.id, thought: 'Miner heading to a new ore patch.', playerId: ctx.aiPlayerId };
         }
     }
     
-    return { action: 'IDLE', thought: "Saving up resources.", playerId: aiPlayerId };
+    // 2. Build Power if needed for refinery
+    if (ctx.powerDeficit && ctx.countBuilding(BuildingType.REFINERY) < refineryTarget && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.POWER_PLANT].cost) {
+        return { action: 'BUILD', buildingType: BuildingType.POWER_PLANT, thought: 'Need more power before expanding economy.', playerId: ctx.aiPlayerId };
+    }
+    
+    // 3. Build Refineries
+    if (ctx.countBuilding(BuildingType.REFINERY) < refineryTarget && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.REFINERY].cost) {
+        return { action: 'BUILD', buildingType: BuildingType.REFINERY, thought: 'Expanding my economic infrastructure.', playerId: ctx.aiPlayerId };
+    }
+    
+    // 4. Train Miners
+    if (ctx.hasBuilding(BuildingType.WAR_FACTORY) && ctx.aiMiners.length < minerTarget && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[UnitType.CHRONO_MINER].cost) {
+        const producers = ctx.getProducers(UnitType.CHRONO_MINER);
+        if (producers.length > 0 && producers[0].productionQueue.length < 2) {
+             return { action: 'TRAIN', unitType: UnitType.CHRONO_MINER, thought: 'The economy must grow. Building another miner.', playerId: ctx.aiPlayerId };
+        }
+    }
+    
+    return null;
 }
+
+function manageMilitary(ctx: AIContext, unitComposition: Partial<Record<UnitType, number>>, armySizeTarget: number): AIAction | null {
+    const combatUnits = ctx.aiUnits.filter(u => u.type !== UnitType.CHRONO_MINER);
+
+    // 1. Build prerequisites first
+    if (!ctx.hasBuilding(BuildingType.BARRACKS) && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.BARRACKS].cost) {
+        return { action: 'BUILD', buildingType: BuildingType.BARRACKS, thought: 'Need a Barracks to train infantry.', playerId: ctx.aiPlayerId };
+    }
+     if (!ctx.hasBuilding(BuildingType.WAR_FACTORY) && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.WAR_FACTORY].cost) {
+        return { action: 'BUILD', buildingType: BuildingType.WAR_FACTORY, thought: 'A War Factory is required for vehicles.', playerId: ctx.aiPlayerId };
+    }
+    
+    // 2. Ensure enough power for production buildings
+    if (ctx.powerDeficit && (ctx.getProducers(UnitType.RIFLEMAN).length > 0 || ctx.getProducers(UnitType.TANK).length > 0)) {
+         if(ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.POWER_PLANT].cost) {
+             return { action: 'BUILD', buildingType: BuildingType.POWER_PLANT, thought: 'Powering up my production facilities.', playerId: ctx.aiPlayerId };
+         }
+    }
+    
+    // 3. Train units based on composition
+    const desiredUnit = Object.keys(unitComposition).find(u => {
+        const unitType = u as UnitType;
+        const config = ENTITY_CONFIGS[unitType];
+        // Check if player has the required buildings for this unit
+        const requirements = config.requires ? (Array.isArray(config.requires) ? config.requires : [config.requires]) : [];
+        const requirementsMet = requirements.every(req => ctx.hasBuilding(req));
+
+        if (!requirementsMet) return false;
+
+        const currentRatio = combatUnits.filter(unit => unit.type === unitType).length / (combatUnits.length || 1);
+        return currentRatio < unitComposition[unitType]! && ctx.aiPlayerState.credits >= config.cost;
+    }) as UnitType | undefined;
+
+    if (desiredUnit) {
+        const producers = ctx.getProducers(desiredUnit);
+        if (producers.length > 0 && producers[0].productionQueue.length < 3) {
+            return { action: 'TRAIN', unitType: desiredUnit, thought: `Building a ${ENTITY_CONFIGS[desiredUnit].name} to balance my army.`, playerId: ctx.aiPlayerId };
+        }
+    }
+    
+    // 4. If army is below target size, build the cheapest available unit from the composition
+    if (combatUnits.length < armySizeTarget) {
+        const affordableUnits = Object.keys(unitComposition)
+            .map(u => u as UnitType)
+            .filter(u => ctx.aiPlayerState.credits >= ENTITY_CONFIGS[u].cost)
+            .sort((a,b) => ENTITY_CONFIGS[a].cost - ENTITY_CONFIGS[b].cost);
+        
+        if (affordableUnits.length > 0) {
+            const cheapestUnit = affordableUnits[0];
+            const producers = ctx.getProducers(cheapestUnit);
+            if(producers.length > 0 && producers[0].productionQueue.length < 5) {
+                return { action: 'TRAIN', unitType: cheapestUnit, thought: `Bolstering my forces with a ${ENTITY_CONFIGS[cheapestUnit].name}.`, playerId: ctx.aiPlayerId };
+            }
+        }
+    }
+
+    // 5. Attack if army size is met
+    if (combatUnits.length >= armySizeTarget) {
+        const target = findBestAttackTarget(ctx);
+        if(target) {
+            return { action: 'ATTACK', attackTargetId: target.id, unitIds: combatUnits.map(u => u.id), thought: `My army is ready. Attacking the enemy ${target.type}!`, playerId: ctx.aiPlayerId };
+        }
+    }
+
+    return null;
+}
+
+// --- Main AI Logic ---
 
 export function getLocalAICommand(state: GameState, aiPlayerId: PlayerId, aiConfig: AIConfiguration): AIAction {
-    const { personality } = aiConfig;
-
-    switch(personality) {
+    // --- Setup AI Context ---
+    const allAiEntities = Object.values(state.entities).filter(e => e.playerId === aiPlayerId);
+    if (allAiEntities.length === 0) {
+        return { action: 'IDLE', thought: 'I have no units or buildings.', playerId: aiPlayerId };
+    }
+    
+    const aiBuildings = allAiEntities.filter(e => 'isPowered' in e) as Building[];
+    const aiUnits = allAiEntities.filter(e => 'status' in e) as Unit[];
+    const aiPlayerState = state.players[aiPlayerId];
+    
+    const ctx: AIContext = {
+        aiPlayerId,
+        aiConfig,
+        gameState: state,
+        aiPlayerState,
+        allAiEntities,
+        aiBuildings,
+        aiUnits,
+        aiMiners: aiUnits.filter(u => u.type === UnitType.CHRONO_MINER),
+        enemyEntities: Object.values(state.entities).filter(e => e.playerId !== aiPlayerId),
+        powerDeficit: aiPlayerState.power.consumed + 20 > aiPlayerState.power.produced, // plan for future consumption
+        hasBuilding: (type: BuildingType) => aiBuildings.some(b => b.type === type && !b.isConstructing),
+        countBuilding: (type: BuildingType) => aiBuildings.filter(b => b.type === type && !b.isConstructing).length,
+        getProducers: (unitType: UnitType) => {
+            const producerType = ENTITY_CONFIGS[unitType].producedBy;
+            return aiBuildings.filter(b => b.type === producerType && b.isPowered && !b.isConstructing);
+        }
+    };
+    
+    // --- Universal High-Priority Actions ---
+    const { underAttack, attacker } = isBaseUnderAttack(ctx);
+    if (underAttack && attacker) {
+        const defenders = ctx.aiUnits.filter(u => u.type !== UnitType.CHRONO_MINER && u.status !== 'ATTACKING');
+        if (defenders.length > 0) {
+            return { action: 'ATTACK', attackTargetId: attacker.id, unitIds: defenders.map(u => u.id), thought: 'My base is under attack! Defending!', playerId: aiPlayerId };
+        }
+    }
+    
+    // --- Personality-driven Strategy ---
+    let action: AIAction | null = null;
+    switch(aiConfig.personality) {
         case 'AGGRESSIVE':
-            return getAggressiveAICommand(state, aiPlayerId);
+            action = manageEconomy(ctx, 2, 1) // Low eco target
+                   || manageMilitary(ctx, { [UnitType.RIFLEMAN]: 0.5, [UnitType.TANK]: 0.5 }, 5); // Attack early
+            break;
+
         case 'ECONOMIC':
-            return getEconomicAICommand(state, aiPlayerId);
+            action = manageEconomy(ctx, 5, 2) // High eco target
+                   || manageMilitary(ctx, { [UnitType.TANK]: 0.4, [UnitType.PRISM_TANK]: 0.3, [UnitType.APOCALYPSE_TANK]: 0.3 }, 15); // Attack late with strong units
+            break;
+            
         case 'BALANCED':
         default:
-            return getBalancedAICommand(state, aiPlayerId);
+             action = manageEconomy(ctx, 3, 2) // Mid eco target
+                   || manageMilitary(ctx, { [UnitType.TESLA_TROOPER]: 0.3, [UnitType.TANK]: 0.7 }, 10); // Attack with a decent mid-game army
+            break;
     }
+
+    return action || { action: 'IDLE', thought: 'Waiting for an opportunity.', playerId: aiPlayerId };
 }

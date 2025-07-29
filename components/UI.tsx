@@ -1,6 +1,7 @@
 
+
 import React, { useState } from 'react';
-import { AIDifficulty, GameStatus, AIType, AIPersonality, AIConfiguration, PlayerState, BuildingType } from '../types';
+import { AIDifficulty, GameStatus, AIPersonality, AIConfiguration, PlayerState, BuildingType } from '../types';
 import { soundService } from '../services/soundService';
 import { EntityIcon } from './icons';
 import { ENTITY_CONFIGS } from '../constants';
@@ -22,14 +23,7 @@ const OpponentConfigurator = ({ config, onUpdate, onRemove }: { config: AIConfig
                 <button onClick={onRemove} className="px-3 py-1 text-sm bg-red-800 hover:bg-red-700 border border-red-500 rounded text-white">Remove</button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div>
-                    <label className="block text-gray-400 mb-1">Type</label>
-                    <select value={config.type} onChange={e => onUpdate({...config, type: e.target.value as AIType, apiKey: e.target.value === 'LOCAL' ? null : config.apiKey })} className="w-full p-2 bg-gray-900 border border-gray-500 rounded text-white">
-                        <option value="LOCAL">Local AI</option>
-                        <option value="GEMINI">Gemini AI</option>
-                    </select>
-                </div>
+            <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                     <label className="block text-gray-400 mb-1">Personality</label>
                     <select value={config.personality} onChange={e => onUpdate({...config, personality: e.target.value as AIPersonality})} className="w-full p-2 bg-gray-900 border border-gray-500 rounded text-white">
@@ -38,7 +32,7 @@ const OpponentConfigurator = ({ config, onUpdate, onRemove }: { config: AIConfig
                         <option value="ECONOMIC">Economic</option>
                     </select>
                 </div>
-                <div className="md:col-span-2">
+                <div>
                      <label className="block text-gray-400 mb-1">Difficulty</label>
                     <select value={config.difficulty} onChange={e => onUpdate({...config, difficulty: e.target.value as AIDifficulty})} className="w-full p-2 bg-gray-900 border border-gray-500 rounded text-white">
                         <option value="EASY">Easy</option>
@@ -46,19 +40,6 @@ const OpponentConfigurator = ({ config, onUpdate, onRemove }: { config: AIConfig
                         <option value="HARD">Hard</option>
                     </select>
                 </div>
-
-                {config.type === 'GEMINI' && (
-                    <div className="md:col-span-2">
-                         <label className="block text-gray-400 mb-1">Gemini API Key (Optional)</label>
-                         <input
-                            type="password"
-                            placeholder="Leave empty to use default key"
-                            value={config.apiKey || ''}
-                            onChange={(e) => onUpdate({...config, apiKey: e.target.value})}
-                            className="w-full px-4 py-2 bg-gray-900 border border-gray-500 rounded text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400"
-                        />
-                    </div>
-                )}
             </div>
         </div>
     );
@@ -66,14 +47,14 @@ const OpponentConfigurator = ({ config, onUpdate, onRemove }: { config: AIConfig
 
 export const MainMenu = ({ onStartGame }: { onStartGame: (options: { opponents: AIConfiguration[] }) => void }) => {
     const [opponents, setOpponents] = useState<AIConfiguration[]>([
-        { id: 'AI_1', type: 'LOCAL', personality: 'BALANCED', difficulty: 'NORMAL', apiKey: null }
+        { id: 'AI_1', personality: 'BALANCED', difficulty: 'NORMAL' }
     ]);
     
     const addOpponent = () => {
         soundService.init(); // Initialize on first user action
         if(opponents.length < 3) {
             const newId: AIPersonality = `AI_${opponents.length + 1}` as AIPersonality;
-            setOpponents([...opponents, { id: newId, type: 'LOCAL', personality: 'BALANCED', difficulty: 'NORMAL', apiKey: null }]);
+            setOpponents([...opponents, { id: newId, personality: 'BALANCED', difficulty: 'NORMAL' }]);
         }
     };
 
@@ -96,7 +77,7 @@ export const MainMenu = ({ onStartGame }: { onStartGame: (options: { opponents: 
 
     return (
         <div className="w-screen h-screen flex flex-col items-center justify-center bg-black text-white p-4 overflow-y-auto">
-            <h1 className="text-5xl md:text-6xl font-bold text-red-500 mb-4" style={{ textShadow: '2px 2px 8px rgba(0,255,255,0.5)' }}>Gemini RTS</h1>
+            <h1 className="text-5xl md:text-6xl font-bold text-red-500 mb-4" style={{ textShadow: '2px 2px 8px rgba(0,255,255,0.5)' }}>AI RTS</h1>
             <h2 className="text-2xl text-center font-semibold text-white mb-6">Opponent Setup</h2>
 
             <div className="flex flex-col items-center space-y-4 w-full max-w-lg mb-6">
