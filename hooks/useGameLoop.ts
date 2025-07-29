@@ -8,7 +8,8 @@ export function useGameLoop(
   dispatch: React.Dispatch<any>,
   mousePos: Position,
   mainRef: React.RefObject<HTMLDivElement>,
-  viewportSize: React.MutableRefObject<{ width: number; height: number; }>
+  viewportSize: React.MutableRefObject<{ width: number; height: number; }>,
+  isMouseOverSidebar: boolean
 ) {
   useEffect(() => {
     // Game tick interval
@@ -23,7 +24,7 @@ export function useGameLoop(
 
   useEffect(() => {
     // Viewport scroll interval
-    if (state.gameStatus !== 'PLAYING') return;
+    if (state.gameStatus !== 'PLAYING' || isMouseOverSidebar) return;
     
     const scrollInterval = setInterval(() => {
       const SCROLL_SPEED = 15;
@@ -44,5 +45,5 @@ export function useGameLoop(
     }, GAME_LOOP_INTERVAL);
 
     return () => clearInterval(scrollInterval);
-  }, [state.gameStatus, state.viewport, mousePos, dispatch, mainRef, viewportSize]);
+  }, [state.gameStatus, state.viewport, mousePos, dispatch, mainRef, viewportSize, isMouseOverSidebar]);
 }

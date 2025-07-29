@@ -18,6 +18,7 @@ import { VisualEffectsLayer } from './components/VisualEffects';
 function App() {
   const [state, dispatch] = useReducer(gameReducer, INITIAL_STATE);
   const [showControls, setShowControls] = useState(false);
+  const [isMouseOverSidebar, setIsMouseOverSidebar] = useState(false);
   const humanPlayerId = 'PLAYER_1';
 
   const {
@@ -32,7 +33,7 @@ function App() {
     gameEventHandlers
   } = useInputHandling(state, dispatch, humanPlayerId);
 
-  useGameLoop(state, dispatch, mousePos, mainRef, viewportSize);
+  useGameLoop(state, dispatch, mousePos, mainRef, viewportSize, isMouseOverSidebar);
   useAI(state, dispatch);
 
   const humanPlayerState = state.players[humanPlayerId];
@@ -119,6 +120,8 @@ function App() {
           dispatch={dispatch}
           viewportSize={viewportSize}
           setPlacingBuildingType={setPlacingBuildingType}
+          onMouseEnter={() => setIsMouseOverSidebar(true)}
+          onMouseLeave={() => setIsMouseOverSidebar(false)}
         />
       </div>
   );

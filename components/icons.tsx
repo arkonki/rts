@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { BuildingType, UnitType } from '../types';
 import {
@@ -21,13 +22,16 @@ import {
   GiZeppelin,
   GiBattleship,
   GiSpeedBoat,
+  GiMineWagon,
+  GiVortex,
+  GiNuclearBomb,
 } from 'react-icons/gi';
 
 export const PowerIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
     <path
       fillRule="evenodd"
-      d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 08 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"
+      d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"
       clipRule="evenodd"
     />
   </svg>
@@ -98,6 +102,20 @@ export const EntityIcon = ({ type, size = '10' }: { type: BuildingType | UnitTyp
       shapeClass = 'rounded-sm';
       break;
 
+    case BuildingType.CHRONO_SPHERE:
+        IconComponent = GiVortex;
+        bgClass = 'bg-purple-700';
+        borderClass = 'border-purple-400';
+        shapeClass = 'rounded-sm';
+        break;
+
+    case BuildingType.NUCLEAR_MISSILE_SILO:
+        IconComponent = GiNuclearBomb;
+        bgClass = 'bg-red-900';
+        borderClass = 'border-yellow-400';
+        shapeClass = 'rounded-sm';
+        break;
+
     // Units
     case UnitType.RIFLEMAN:
       IconComponent = GiRifle;
@@ -131,6 +149,13 @@ export const EntityIcon = ({ type, size = '10' }: { type: BuildingType | UnitTyp
       IconComponent = GiBattleTank;
       bgClass = 'bg-black';
       borderClass = 'border-gray-400';
+      shapeClass = 'rounded-md';
+      break;
+    
+    case UnitType.CHRONO_MINER:
+      IconComponent = GiMineWagon;
+      bgClass = 'bg-yellow-800';
+      borderClass = 'border-yellow-500';
       shapeClass = 'rounded-md';
       break;
 

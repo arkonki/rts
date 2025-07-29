@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef } from 'react';
 import { TerrainType, FogState } from '../types';
 import { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, MAP_WIDTH_TILES, MAP_HEIGHT_TILES } from '../constants';
@@ -13,22 +14,88 @@ export const TerrainCanvas = React.memo(({ terrain }: { terrain: TerrainType[][]
         canvas.width = MAP_WIDTH;
         canvas.height = MAP_HEIGHT;
         
-        const groundColor = '#2d3748'; // gray-800
-        const mountainColor = '#4a5568'; // gray-700
-        const treeColor = '#2f855a'; // green-700
-        const shallowWaterColor = '#4299e1'; // blue-400
-        const deepWaterColor = '#2b6cb0'; // blue-700
+        // A more thematic and detailed color palette for terrain
+        const colors = {
+            ground: '#6B5B3E',
+            groundDetail: '#836F4D',
+            mountain: '#5A686C',
+            mountainHighlight: '#8A9AA0',
+            treeTrunk: '#5A3825',
+            treeLeaves: '#3E8351',
+            shallowWater: '#4299e1',
+            deepWater: '#2b6cb0',
+            wave: '#63b3ed',
+        };
 
         for (let y = 0; y < MAP_HEIGHT_TILES; y++) {
             for (let x = 0; x < MAP_WIDTH_TILES; x++) {
-                switch(terrain[y][x]) {
-                    case TerrainType.MOUNTAIN: ctx.fillStyle = mountainColor; break;
-                    case TerrainType.TREES: ctx.fillStyle = treeColor; break;
-                    case TerrainType.SHALLOW_WATER: ctx.fillStyle = shallowWaterColor; break;
-                    case TerrainType.DEEP_WATER: ctx.fillStyle = deepWaterColor; break;
-                    default: ctx.fillStyle = groundColor; break;
+                const tileX = x * TILE_SIZE;
+                const tileY = y * TILE_SIZE;
+                
+                // Base ground color for all land tiles
+                if(terrain[y][x] !== TerrainType.SHALLOW_WATER && terrain[y][x] !== TerrainType.DEEP_WATER){
+                    ctx.fillStyle = colors.ground;
+                    ctx.fillRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
                 }
-                ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+
+                switch(terrain[y][x]) {
+                    case TerrainType.GROUND:
+                         // Add subtle texture to ground
+                        ctx.fillStyle = colors.groundDetail;
+                        for(let i = 0; i < 3; i++) {
+                            ctx.beginPath();
+                            ctx.arc(tileX + Math.random() * TILE_SIZE, tileY + Math.random() * TILE_SIZE, Math.random() * 1.5, 0, Math.PI * 2);
+                            ctx.fill();
+                        }
+                        break;
+                    case TerrainType.MOUNTAIN:
+                        ctx.fillStyle = colors.mountain;
+                        ctx.fillRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
+                        ctx.fillStyle = colors.mountainHighlight;
+                        ctx.beginPath();
+                        ctx.moveTo(tileX + TILE_SIZE * 0.2, tileY + TILE_SIZE * 0.8);
+                        ctx.lineTo(tileX + TILE_SIZE * 0.5, tileY + TILE_SIZE * 0.2);
+                        ctx.lineTo(tileX + TILE_SIZE * 0.8, tileY + TILE_SIZE * 0.8);
+                        ctx.closePath();
+                        ctx.fill();
+                        break;
+                    case TerrainType.TREES:
+                         // Trunk
+                        ctx.fillStyle = colors.treeTrunk;
+                        ctx.fillRect(tileX + TILE_SIZE * 0.4, tileY + TILE_SIZE * 0.5, TILE_SIZE * 0.2, TILE_SIZE * 0.4);
+                        // Leaves
+                        ctx.fillStyle = colors.treeLeaves;
+                        ctx.beginPath();
+                        ctx.arc(tileX + TILE_SIZE / 2, tileY + TILE_SIZE * 0.4, TILE_SIZE * 0.3, 0, Math.PI * 2);
+                        ctx.fill();
+                        break;
+                    case TerrainType.SHALLOW_WATER:
+                        ctx.fillStyle = colors.shallowWater;
+                        ctx.fillRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
+                        // Waves
+                        ctx.strokeStyle = colors.wave;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(tileX, tileY + TILE_SIZE * 0.3);
+                        ctx.quadraticCurveTo(tileX + TILE_SIZE / 2, tileY + TILE_SIZE * 0.1, tileX + TILE_SIZE, tileY + TILE_SIZE * 0.3);
+                        ctx.moveTo(tileX, tileY + TILE_SIZE * 0.8);
+                        ctx.quadraticCurveTo(tileX + TILE_SIZE / 2, tileY + TILE_SIZE * 0.6, tileX + TILE_SIZE, tileY + TILE_SIZE * 0.8);
+                        ctx.stroke();
+                        break;
+                    case TerrainType.DEEP_WATER:
+                        ctx.fillStyle = colors.deepWater;
+                        ctx.fillRect(tileX, tileY, TILE_SIZE, TILE_SIZE);
+                         // Subtle wave
+                        ctx.strokeStyle = colors.shallowWater;
+                        ctx.lineWidth = 1;
+                        ctx.globalAlpha = 0.5;
+                        ctx.beginPath();
+                        ctx.moveTo(tileX, tileY + TILE_SIZE * 0.5);
+                        ctx.quadraticCurveTo(tileX + TILE_SIZE / 2, tileY + TILE_SIZE * 0.3, tileX + TILE_SIZE, tileY + TILE_SIZE * 0.5);
+                        ctx.stroke();
+                        ctx.globalAlpha = 1.0;
+                        break;
+                }
             }
         }
     }, [terrain]);

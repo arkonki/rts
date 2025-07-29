@@ -126,9 +126,11 @@ interface SidebarProps {
     dispatch: React.Dispatch<any>;
     viewportSize: React.MutableRefObject<{ width: number; height: number; }>;
     setPlacingBuildingType: (type: BuildingType | null) => void;
+    onMouseEnter: () => void;
+    onMouseLeave: () => void;
 }
 
-export const Sidebar = ({ playerState, state, dispatch, viewportSize, setPlacingBuildingType }: SidebarProps) => {
+export const Sidebar = ({ playerState, state, dispatch, viewportSize, setPlacingBuildingType, onMouseEnter, onMouseLeave }: SidebarProps) => {
 
     const { entities, selectedIds } = state;
     const selectedEntity = selectedIds.length === 1 ? entities[selectedIds[0]] : null;
@@ -181,7 +183,11 @@ export const Sidebar = ({ playerState, state, dispatch, viewportSize, setPlacing
     };
 
     return (
-        <aside className="w-72 bg-gray-900/80 backdrop-blur-sm border-l-2 border-cyan-500/30 p-2 flex flex-col space-y-2 text-white">
+        <aside
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
+            className="w-72 bg-gray-900/80 backdrop-blur-sm border-l-2 border-cyan-500/30 p-2 flex flex-col space-y-2 text-white"
+        >
           <header className="flex justify-around border-b-2 border-gray-500/50 pb-2 bg-black/20 rounded-t-md p-1">
               <div className="flex items-center space-x-2 text-lg"> <CreditsIcon /> <span className="font-bold">{Math.floor(playerState.credits)}</span> </div>
               <div className="flex items-center space-x-2 text-lg"> <PowerIcon /> <span className={`font-bold ${playerState.power.produced >= playerState.power.consumed ? 'text-green-400' : 'text-red-500'}`}>{playerState.power.produced - playerState.power.consumed}</span></div>
