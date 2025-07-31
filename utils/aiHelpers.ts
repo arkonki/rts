@@ -1,9 +1,8 @@
-
 import { BuildingType, GameEntity, Position, TerrainType } from '../types';
 import { ENTITY_CONFIGS, MAP_HEIGHT, MAP_WIDTH, TILE_SIZE, MAP_HEIGHT_TILES, MAP_WIDTH_TILES } from '../constants';
 
 function isCoastalTile(x: number, y: number, terrain: TerrainType[][]): boolean {
-    if (x < 0 || x >= MAP_WIDTH_TILES || y < 0 || y >= MAP_HEIGHT_TILES) return false;
+    if (x < 0 || x >= MAP_WIDTH_TILES || y < 0 || y < MAP_HEIGHT_TILES) return false;
     if (terrain[y]?.[x] !== TerrainType.GROUND) return false;
     for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
@@ -49,7 +48,7 @@ export function findBuildPlacement(buildingType: BuildingType, allAiEntities: Ga
             return dist < (e.size / 2 + (ENTITY_CONFIGS[buildingType].size / 2) + TILE_SIZE); // Add buffer
         });
 
-        if (!isOccupied) return pos;
+        if (!isOccupied) return { x: tileX, y: tileY }; // Return tile coordinates
     }
     return null; // Return null if no position found
 }

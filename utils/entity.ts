@@ -1,9 +1,8 @@
-
-
 import { Unit, GameEntity, FogState, UnitDomain } from '../types';
 import { ENTITY_CONFIGS, TILE_SIZE } from '../constants';
+import { SpatialGrid } from './spatialGrid';
 
-export function findNearestEnemy(unit: Unit, allEntities: Record<string, GameEntity>, fogOfWar: FogState[][]): GameEntity | null {
+export function findNearestEnemy(unit: Unit, allEntitiesGrid: SpatialGrid, fogOfWar: FogState[][]): GameEntity | null {
     let nearestEnemy: GameEntity | null = null;
     let minDistance = Infinity;
     
@@ -12,8 +11,10 @@ export function findNearestEnemy(unit: Unit, allEntities: Record<string, GameEnt
     const canAttackDomains = attackerConfig.canAttack;
 
     if (!canAttackDomains || canAttackDomains.length === 0) return null;
+    
+    const nearbyEntities = allEntitiesGrid.getNearby(unit);
 
-    for (const entity of Object.values(allEntities)) {
+    for (const entity of nearbyEntities) {
         if (entity.playerId !== unit.playerId) {
             const tileX = Math.floor(entity.position.x / TILE_SIZE);
             const tileY = Math.floor(entity.position.y / TILE_SIZE);

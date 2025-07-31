@@ -1,7 +1,8 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GameState, BuildingType, Position, Unit, UnitType, GameEntity } from '../types';
 import { soundService, SoundEffect } from '../services/soundService';
+import { TILE_SIZE } from '../constants';
+import { Renderable } from '../utils/clustering';
 
 export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>, humanPlayerId: string) {
   const [placingBuildingType, setPlacingBuildingType] = useState<BuildingType | null>(null);
@@ -73,12 +74,33 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
+  const handleEntityClick = (e: React.MouseEvent, item: Renderable) => {
+      e.stopPropagation();
+      const clickedIsEnemy = item.playerId !== humanPlayerId;
+
+      if (clickedIsEnemy) {
+          if (state.selectedIds.some(sid => state.entities[sid] && 'status' in state.entities[sid])) {
+              soundService.play('move_confirm_1', 0.4);
+              dispatch({ type: 'COMMAND_ATTACK', payload: item.id });
+          }
+      } else {
+          // Friendly click logic
+          soundService.play('click');
+          const idsToSelect = ('isCluster' in item && item.isCluster) ? item.units.map(u => u.id) : [item.id];
+          const newSelection = e.shiftKey
+              ? Array.from(new Set([...state.selectedIds, ...idsToSelect]))
+              : idsToSelect;
+          dispatch({ type: 'SELECT', payload: newSelection });
+      }
+  };
+
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    // This handler is now for the background element, so any click here is a ground click.
     if (e.button !== 0 || placingBuildingType || isAttackMovePending) return;
-    // This now only handles ground clicks, which start a drag.
-    // Entity clicks are handled by their own components and stop propagation.
-    setIsDragging(true); 
-    setDragStartPos(getMapCoords(e.clientX, e.clientY)); 
+    
+    const mapCoords = getMapCoords(e.clientX, e.clientY);
+    setIsDragging(true);
+    setDragStartPos(mapCoords);
   };
   
   const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -193,6 +215,7 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
           handleMouseUp,
           handleRightClick,
           handleMouseMove,
+          handleEntityClick,
       }
   };
 }

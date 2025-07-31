@@ -1,11 +1,18 @@
-
-import { GameState, GameStatus, BuildingType, Building, Unit, UnitType, FogState, AIAction, TerrainType, UnitDomain, Position, VisualEffect, AIConfiguration, PlayerId, PlayerState, SuperweaponState, ResourcePatch, GameEntity } from '../types';
+import { GameState, GameStatus, BuildingType, Building, Unit, UnitType, FogState, AIAction, TerrainType, UnitDomain, Position, VisualEffect, AIConfiguration, PlayerId, PlayerState, SuperweaponState, ResourcePatch, GameEntity, PlayerStats } from '../types';
 import { ENTITY_CONFIGS, GAME_LOOP_INTERVAL, MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, MAP_WIDTH_TILES, MAP_HEIGHT_TILES, DIFFICULTY_SETTINGS, ATTACK_VISUAL_DURATION, EXPLOSION_DURATION, DAMAGE_TEXT_DURATION, REPAIR_TEXT_DURATION, STARTING_POSITIONS, CHRONO_VORTEX_DURATION, NUKE_IMPACT_DURATION } from '../constants';
 import { generateMap } from '../utils/map';
 import { findPath } from '../utils/pathfinding';
 import { findNearestEnemy } from '../utils/entity';
-import { findBuildPlacement } from '../utils/aiHelpers';
 import { soundService, unitAttackSounds, SoundEffect } from '../services/soundService';
+import { SpatialGrid } from '../utils/spatialGrid';
+
+const createInitialPlayerStats = (): PlayerStats => ({
+    unitsBuilt: {},
+    buildingsConstructed: {},
+    unitsLost: 0,
+    enemiesKilled: 0,
+    creditsEarned: 0,
+});
 
 export const INITIAL_STATE: GameState = {
   entities: {},
@@ -21,6 +28,8 @@ export const INITIAL_STATE: GameState = {
   isChronoTeleportPending: false,
   resourcePatches: {},
   controlGroups: {},
+  gameStats: {},
+  gameSummary: null,
 };
 
 // --- Game Tick Helper Functions ---
@@ -29,7 +38,8 @@ type SoundDispatcher = (sound: SoundEffect, volume?: number) => void;
 
 function updateBuildingConstruction(state: GameState, now: number, dispatchSound: SoundDispatcher): GameState {
     const updatedEntities = { ...state.entities };
-    let entitiesChanged = false;
+    const updatedGameStats = JSON.parse(JSON.stringify(state.gameStats));
+    let changed = false;
 
     Object.values(state.entities).forEach(entity => {
         if ('isConstructing' in entity && entity.isConstructing) {
@@ -40,6 +50,14 @@ function updateBuildingConstruction(state: GameState, now: number, dispatchSound
 
             if (newHp >= config.hp) {
                 updatedEntities[building.id] = { ...building, hp: newHp, isConstructing: false, isPowered: true };
+                changed = true;
+                
+                // STATS UPDATE
+                const stats = updatedGameStats[building.playerId];
+                if (stats) {
+                    stats.buildingsConstructed[building.type] = (stats.buildingsConstructed[building.type] || 0) + 1;
+                }
+                
                 if (building.playerId === 'PLAYER_1') {
                     dispatchSound('construction_complete');
                 }
@@ -56,17 +74,18 @@ function updateBuildingConstruction(state: GameState, now: number, dispatchSound
                 }
             } else {
                 updatedEntities[building.id] = { ...building, hp: newHp };
+                changed = true;
             }
-            entitiesChanged = true;
         }
     });
 
-    return entitiesChanged ? { ...state, entities: updatedEntities } : state;
+    return changed ? { ...state, entities: updatedEntities, gameStats: updatedGameStats } : state;
 }
 
 function updateBuildingProduction(state: GameState, now: number, dispatchSound: SoundDispatcher): GameState {
     const updatedEntities = { ...state.entities };
-    let entitiesChanged = false;
+    const updatedGameStats = JSON.parse(JSON.stringify(state.gameStats));
+    let changed = false;
 
     Object.values(state.entities).forEach(entity => {
         if ('productionQueue' in entity && entity.productionQueue.length > 0 && entity.isPowered) {
@@ -77,6 +96,12 @@ function updateBuildingProduction(state: GameState, now: number, dispatchSound: 
 
             if (newProgress >= config.buildTime) {
                 if (building.playerId === 'PLAYER_1') dispatchSound('unit_ready');
+                
+                // STATS UPDATE
+                const stats = updatedGameStats[building.playerId];
+                if(stats) {
+                    stats.unitsBuilt[itemType] = (stats.unitsBuilt[itemType] || 0) + 1;
+                }
 
                 let spawnPos = { x: building.position.x, y: building.position.y + building.size / 2 + 15 };
                 if (building.type === BuildingType.NAVAL_YARD) {
@@ -109,22 +134,23 @@ function updateBuildingProduction(state: GameState, now: number, dispatchSound: 
                 };
                 
                 updatedEntities[building.id] = { ...building, productionProgress: 0, productionQueue: building.productionQueue.slice(1) };
-                entitiesChanged = true;
+                changed = true;
             } else {
                 updatedEntities[building.id] = { ...building, productionProgress: newProgress };
-                entitiesChanged = true;
+                changed = true;
             }
         }
     });
 
-    return entitiesChanged ? { ...state, entities: updatedEntities } : state;
+    return changed ? { ...state, entities: updatedEntities, gameStats: updatedGameStats } : state;
 }
 
-function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatcher): GameState {
+function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatcher, spatialGrid: SpatialGrid): GameState {
     let newEntities = { ...state.entities };
     let newResourcePatches = { ...state.resourcePatches };
     let newPlayers = { ...state.players };
     let newVisualEffects = [...state.visualEffects];
+    let newGameStats = JSON.parse(JSON.stringify(state.gameStats));
     let somethingChanged = false;
 
     // --- Repair Bay Logic ---
@@ -230,7 +256,7 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
         }
         else { // --- COMBAT LOGIC for non-miners/non-engineers ---
             if (unit.status === 'IDLE' || unit.status === 'ATTACK_MOVING') {
-                const enemy = findNearestEnemy(unit, newEntities, state.fogOfWar);
+                const enemy = findNearestEnemy(unit, spatialGrid, state.fogOfWar);
                 if (enemy) {
                     currentUnit = { ...currentUnit, status: 'ATTACKING', targetId: enemy.id, path: undefined };
                 }
@@ -266,6 +292,20 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
                             const newHp = target.hp - damage;
                             if (newHp <= 0) {
                                 dispatchSound(target.maxHp > 300 ? 'explosion_large' : 'explosion_small', 0.4);
+                                
+                                // --- STATS UPDATE ---
+                                const attackerPlayerId = currentUnit.playerId;
+                                const targetPlayerId = target.playerId;
+                                if (attackerPlayerId in newGameStats && targetPlayerId in newGameStats) {
+                                    if ('status' in target) { // It's a unit
+                                        newGameStats[targetPlayerId].unitsLost += 1;
+                                        newGameStats[attackerPlayerId].enemiesKilled += 1;
+                                    } else if ('isPowered' in target) { // It's a building
+                                        newGameStats[attackerPlayerId].enemiesKilled += 1; // Count destroyed buildings as kills
+                                    }
+                                }
+                                // --- END STATS UPDATE ---
+
                                 delete newEntities[target.id]; // Target destroyed
                                 const hasTargetPos = !!currentUnit.targetPosition;
                                 currentUnit = { 
@@ -301,7 +341,15 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
                     }
                     else if (currentUnit.status === 'RETURNING_TO_REFINERY') {
                         const player = newPlayers[currentUnit.playerId];
-                        newPlayers[currentUnit.playerId] = { ...player, credits: player.credits + (currentUnit.cargoAmount || 0) };
+                        const cargo = currentUnit.cargoAmount || 0;
+                        newPlayers[currentUnit.playerId] = { ...player, credits: player.credits + cargo };
+                        
+                        // --- STATS UPDATE ---
+                        if (currentUnit.playerId in newGameStats) {
+                            newGameStats[currentUnit.playerId].creditsEarned += cargo;
+                        }
+                        // --- END STATS UPDATE ---
+                        
                         currentUnit.cargoAmount = 0;
                         const resourceTarget = newResourcePatches[currentUnit.gatherTargetId!];
                         
@@ -332,7 +380,7 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
     });
 
     if (somethingChanged || newVisualEffects.length > state.visualEffects.length) {
-        return { ...state, entities: newEntities, resourcePatches: newResourcePatches, players: newPlayers, visualEffects: newVisualEffects };
+        return { ...state, entities: newEntities, resourcePatches: newResourcePatches, players: newPlayers, visualEffects: newVisualEffects, gameStats: newGameStats };
     }
     return state;
 }
@@ -435,12 +483,27 @@ function updateVisualEffects(effects: VisualEffect[], now: number): VisualEffect
 }
 
 function checkWinLossConditions(state: GameState): GameStatus {
-    const humanPlayerId = 'PLAYER_1';
-    const humanHQ = state.entities[state.players[humanPlayerId]?.hqId];
-    if (!humanHQ) return 'AI_WIN';
+    // A player is defeated if they have no buildings left that can produce other buildings (i.e., HQ-like structures).
+    // For simplicity, we'll stick to "no buildings at all".
+    const playerHasBuildings = (playerId: PlayerId) => {
+        return Object.values(state.entities).some(e => e.playerId === playerId && 'isPowered' in e);
+    };
 
-    const activeOpponents = state.aiOpponents.filter(opp => state.entities[state.players[opp.id]?.hqId]);
-    if (activeOpponents.length === 0 && state.aiOpponents.length > 0) {
+    const humanPlayerId = 'PLAYER_1';
+    
+    // Check if game has already concluded
+    if (state.gameStatus === 'PLAYER_WIN' || state.gameStatus === 'AI_WIN') {
+        return state.gameStatus;
+    }
+    
+    const humanIsAlive = playerHasBuildings(humanPlayerId);
+    const liveAiOpponents = state.aiOpponents.filter(opp => playerHasBuildings(opp.id));
+
+    if (!humanIsAlive) {
+        return 'AI_WIN';
+    }
+
+    if (humanIsAlive && liveAiOpponents.length === 0 && state.aiOpponents.length > 0) {
         return 'PLAYER_WIN';
     }
     
@@ -476,7 +539,8 @@ export function gameReducer(state: GameState, action: any): GameState {
 
       const newPlayers: Record<PlayerId, PlayerState> = {};
       const newEntities: GameState['entities'] = {};
-
+      const newGameStats: Record<PlayerId, PlayerStats> = {};
+      
       const hqConfig = ENTITY_CONFIGS[BuildingType.HQ];
       
       allPlayerIds.forEach((id, index) => {
@@ -493,6 +557,8 @@ export function gameReducer(state: GameState, action: any): GameState {
             hqId: hqId,
             superweapon: null,
         };
+        
+        newGameStats[id] = createInitialPlayerStats();
 
         newEntities[hqId] = {
             id: hqId,
@@ -520,6 +586,8 @@ export function gameReducer(state: GameState, action: any): GameState {
           terrain,
           fogOfWar,
           resourcePatches,
+          gameStats: newGameStats,
+          gameSummary: null,
       };
       // Pre-tick to set initial power and fog
       startingState = updatePlayerPowerAndSuperweapons(startingState, 0, () => {});
@@ -531,9 +599,9 @@ export function gameReducer(state: GameState, action: any): GameState {
     case 'MAIN_MENU':
         return { ...INITIAL_STATE, terrain: state.terrain }; // Keep terrain to avoid re-generating
     case 'PAUSE_GAME':
-        return { ...state, gameStatus: 'PAUSED' };
+        return state.gameStatus === 'PLAYING' ? { ...state, gameStatus: 'PAUSED' } : state;
     case 'RESUME_GAME':
-        return { ...state, gameStatus: 'PLAYING' };
+        return state.gameStatus === 'PAUSED' ? { ...state, gameStatus: 'PLAYING' } : state;
     case 'SELECT':
       return { ...state, selectedIds: action.payload, isChronoTeleportPending: false };
     
@@ -804,7 +872,7 @@ export function gameReducer(state: GameState, action: any): GameState {
     }
 
     case 'LAUNCH_NUKE': {
-        const { playerId, targetPosition } = action.payload;
+        const { playerId, targetPosition } = action.payload; // targetPosition is now TILE based from AI
         const playerState = state.players[playerId];
 
         if(!playerState.superweapon || playerState.superweapon.type !== BuildingType.NUCLEAR_MISSILE_SILO || !playerState.superweapon.isReady) {
@@ -813,15 +881,21 @@ export function gameReducer(state: GameState, action: any): GameState {
 
         soundService.play('nuke_launch');
         
+        // Convert tile position to pixel position for effect
+        const pixelPosition = { 
+            x: targetPosition.x * TILE_SIZE + TILE_SIZE / 2, 
+            y: targetPosition.y * TILE_SIZE + TILE_SIZE / 2 
+        };
+
         const newEntities = { ...state.entities };
         const newVisualEffects = [...state.visualEffects];
-        newVisualEffects.push({ id: `nuke_${Date.now()}`, type: 'NUKE_IMPACT', creationTime: Date.now(), position: targetPosition });
+        newVisualEffects.push({ id: `nuke_${Date.now()}`, type: 'NUKE_IMPACT', creationTime: Date.now(), position: pixelPosition });
 
         const NUKE_RADIUS = TILE_SIZE * 5;
         const NUKE_DAMAGE = 1000;
 
         Object.values(newEntities).forEach(entity => {
-            const dist = Math.hypot(entity.position.x - targetPosition.x, entity.position.y - targetPosition.y);
+            const dist = Math.hypot(entity.position.x - pixelPosition.x, entity.position.y - pixelPosition.y);
             if (dist < NUKE_RADIUS) {
                 const damage = NUKE_DAMAGE * (1 - (dist / NUKE_RADIUS));
                 const newHp = entity.hp - damage;
@@ -852,18 +926,27 @@ export function gameReducer(state: GameState, action: any): GameState {
       const soundsToPlay: { sound: SoundEffect; volume?: number }[] = [];
       const dispatchSound = (sound: SoundEffect, volume?: number) => soundsToPlay.push({ sound, volume });
       
+      const spatialGrid = new SpatialGrid(TILE_SIZE * 5);
+      Object.values(state.entities).forEach(e => spatialGrid.insert(e));
+      
       let nextState = state;
       nextState = updateBuildingConstruction(nextState, now, dispatchSound);
       nextState = updateBuildingProduction(nextState, now, dispatchSound);
-      nextState = updateUnits(nextState, now, dispatchSound);
+      nextState = updateUnits(nextState, now, dispatchSound, spatialGrid);
       nextState = updatePlayerPowerAndSuperweapons(nextState, now, dispatchSound);
       nextState = updateFogOfWar(nextState);
+
+      const newGameStatus = checkWinLossConditions(nextState);
 
       const finalState = {
           ...nextState,
           visualEffects: updateVisualEffects(nextState.visualEffects, now),
           players: updateAICooldowns(nextState.players),
-          gameStatus: checkWinLossConditions(nextState),
+          gameStatus: newGameStatus,
+          // If the game just ended, capture the stats for the summary screen.
+          gameSummary: (newGameStatus === 'PLAYER_WIN' || newGameStatus === 'AI_WIN') && state.gameStatus === 'PLAYING'
+            ? nextState.gameStats
+            : state.gameSummary,
       };
 
       soundsToPlay.forEach(({ sound, volume }) => soundService.play(sound, volume));
@@ -883,25 +966,29 @@ export function gameReducer(state: GameState, action: any): GameState {
 
         switch(aiActionType) {
             case 'BUILD': {
-                 const { buildingType } = aiActionPayload;
-                 if(buildingType) {
+                 const { buildingType, placementPosition } = aiActionPayload;
+                 if(buildingType && placementPosition) {
                     const config = ENTITY_CONFIGS[buildingType];
-                    const hq = newState.entities[aiPlayerState.hqId];
-                    if (hq && aiPlayerState.credits >= config.cost) {
-                        const placementPosition = findBuildPlacement(buildingType, Object.values(newState.entities).filter(e => e.playerId === playerId), hq.position, newState.terrain);
+                    if (aiPlayerState.credits >= config.cost) {
+                        const pixelPos = { x: placementPosition.x * TILE_SIZE + TILE_SIZE / 2, y: placementPosition.y * TILE_SIZE + TILE_SIZE / 2 };
                         
-                        if(placementPosition) {
+                        const isOccupied = Object.values(newState.entities).some(e => {
+                           const dist = Math.hypot(e.position.x - pixelPos.x, e.position.y - pixelPos.y);
+                           return dist < (e.size / 2 + config.size / 2);
+                        });
+
+                        if(!isOccupied) {
                             const newAiPlayerState = { ...aiPlayerState, credits: aiPlayerState.credits - config.cost };
                             const newId = `${playerId}_${buildingType.toLowerCase()}_${Date.now()}`;
                             const newBuilding: Building = {
                                 id: newId, type: buildingType, playerId: playerId, hp: 1, maxHp: config.hp,
-                                position: placementPosition, size: config.size, isPowered: false, 
+                                position: pixelPos, size: config.size, isPowered: false, 
                                 productionQueue: [], productionProgress: 0, isConstructing: true,
                             };
                             newState.entities = { ...newState.entities, [newId]: newBuilding };
                             newState.players[playerId] = newAiPlayerState;
                         } else {
-                            message = thought + ` (Failed to find a spot!)`;
+                             message = thought + ` (Failed to place at ${placementPosition.x}, ${placementPosition.y} - obstructed!)`;
                         }
                     }
                  }
@@ -966,6 +1053,7 @@ export function gameReducer(state: GameState, action: any): GameState {
             case 'LAUNCH_SUPERWEAPON': {
                 const { targetPosition } = aiActionPayload;
                 if (targetPosition) {
+                    // Pass tile position directly
                     newState = gameReducer(newState, { type: 'LAUNCH_NUKE', payload: { playerId, targetPosition }});
                 }
                 break;

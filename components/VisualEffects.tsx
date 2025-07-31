@@ -1,64 +1,60 @@
-
 import React from 'react';
-import { GameState, VisualEffect, AttackVisualEffect, DamageTextEffect, ExplosionEffect, UnitType, ChronoVortexEffect, NukeImpactEffect, RepairTextEffect } from '../types';
-import { ENTITY_CONFIGS } from '../constants';
+import { GameState, ChronoVortexEffect, NukeImpactEffect, DamageTextEffect, RepairTextEffect, AttackVisualEffect, ExplosionEffect, UnitType } from '../types';
 
-
-const DamageText = ({ effect }: { effect: DamageTextEffect }) => (
-    <div
-        className="absolute text-red-500 font-bold text-lg pointer-events-none z-30 damage-text-animate"
-        style={{ left: effect.position.x, top: effect.position.y, textShadow: '1px 1px 2px black' }}
-    >
-        {effect.text}
-    </div>
-);
-
-const RepairText = ({ effect }: { effect: RepairTextEffect }) => (
-    <div
-        className="absolute text-green-400 font-bold text-lg pointer-events-none z-30 damage-text-animate"
-        style={{ left: effect.position.x + 10, top: effect.position.y, textShadow: '1px 1px 2px black' }}
-    >
-        {effect.text}
-    </div>
-);
+const DamageText = ({ effect }: { effect: DamageTextEffect | RepairTextEffect }) => {
+    const color = effect.type === 'DAMAGE_TEXT' ? 'text-red-500' : 'text-green-500';
+    const style = {
+        left: effect.position.x,
+        top: effect.position.y,
+    };
+    return (
+        <div 
+            className={`absolute ${color} font-bold text-lg pointer-events-none transform -translate-x-1/2 damage-text-animate z-20`} 
+            style={style}
+        >
+            {effect.text}
+        </div>
+    );
+};
 
 const AttackVisual = ({ effect, state }: { effect: AttackVisualEffect, state: GameState }) => {
     const attacker = state.entities[effect.attackerId];
     const target = state.entities[effect.targetId];
-
     if (!attacker || !target) return null;
-
-    const attackerConfig = ENTITY_CONFIGS[attacker.type as UnitType];
-    const isBeam = attackerConfig.name === 'Prism Tank' || attackerConfig.name === 'Tesla Trooper';
-
+    
+    const isBeam = attacker.type === UnitType.PRISM_TANK || attacker.type === UnitType.TESLA_TROOPER;
+    const stroke = isBeam ? 'cyan' : 'yellow';
+    const strokeWidth = isBeam ? 2 : 1.5;
+    
     return (
-        <svg className="absolute w-full h-full pointer-events-none z-20 attack-visual-animate" style={{ left: 0, top: 0 }}>
-            <line
-                x1={attacker.position.x}
-                y1={attacker.position.y}
-                x2={target.position.x}
-                y2={target.position.y}
-                stroke={isBeam ? 'cyan' : 'rgba(255, 255, 100, 0.7)'}
-                strokeWidth={isBeam ? 3 : 2}
-                strokeDasharray={isBeam ? "none" : "4 2"}
+        <svg className="absolute w-full h-full pointer-events-none z-10 top-0 left-0 attack-visual-animate">
+            <line 
+                x1={attacker.position.x} 
+                y1={attacker.position.y} 
+                x2={target.position.x} 
+                y2={target.position.y} 
+                stroke={stroke} 
+                strokeWidth={strokeWidth}
+                strokeDasharray={isBeam ? 'none' : '4 4'} 
             />
         </svg>
     );
 };
 
-const Explosion = ({ effect }: { effect: ExplosionEffect }) => (
-    <div
-        className="absolute rounded-full pointer-events-none z-30 explosion-animate"
-        style={{
-            left: effect.position.x,
-            top: effect.position.y,
-            width: effect.size,
-            height: effect.size,
-            background: 'radial-gradient(circle, rgba(255,255,150,0.8) 0%, rgba(255,100,0,0.5) 50%, rgba(200,0,0,0) 70%)',
-            transform: 'translate(-50%, -50%)',
-        }}
-    />
-);
+const Explosion = ({ effect }: { effect: ExplosionEffect }) => {
+    const style = {
+        left: effect.position.x,
+        top: effect.position.y,
+        width: effect.size * 2,
+        height: effect.size * 2,
+    };
+    return (
+        <div 
+            className="absolute bg-yellow-400 rounded-full pointer-events-none transform -translate-x-1/2 -translate-y-1/2 explosion-animate z-20"
+            style={style}
+        />
+    );
+};
 
 const ChronoVortex = ({ effect }: { effect: ChronoVortexEffect }) => (
      <div className="absolute pointer-events-none z-30" style={{ left: effect.position.x, top: effect.position.y, transform: 'translate(-50%, -50%)' }}>
@@ -104,13 +100,12 @@ export const VisualEffectsLayer = React.memo(({ state }: { state: GameState }) =
             {state.visualEffects.map(effect => {
                 switch (effect.type) {
                     case 'DAMAGE_TEXT':
-                        return <DamageText key={effect.id} effect={effect} />;
                     case 'REPAIR_TEXT':
-                        return <RepairText key={effect.id} effect={effect} />;
+                        return <DamageText key={effect.id} effect={effect as DamageTextEffect | RepairTextEffect} />;
                     case 'ATTACK_VISUAL':
-                        return <AttackVisual key={effect.id} effect={effect} state={state} />;
+                        return <AttackVisual key={effect.id} effect={effect as AttackVisualEffect} state={state} />;
                     case 'EXPLOSION':
-                        return <Explosion key={effect.id} effect={effect} />;
+                        return <Explosion key={effect.id} effect={effect as ExplosionEffect} />;
                     case 'CHRONO_VORTEX':
                         return <ChronoVortex key={effect.id} effect={effect} />;
                     case 'NUKE_IMPACT':

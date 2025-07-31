@@ -1,7 +1,6 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { GameState, AIAction, BuildingType, UnitType, FogState, PlayerId, AIConfiguration } from '../types';
-import { TILE_SIZE } from "../constants";
+import { TILE_SIZE, MAP_WIDTH_TILES, MAP_HEIGHT_TILES } from "../constants";
 import { getProducibleItems } from "../utils/logic";
 
 
@@ -28,7 +27,13 @@ function getVisibleState(state: GameState, aiPlayerId: PlayerId) {
             return fogOfWar[tileY]?.[tileX] === FogState.VISIBLE || fogOfWar[tileY]?.[tileX] === FogState.EXPLORED;
         }
         return false;
-    }).map(e => ({ type: e.type, hp: e.hp, id: e.id, playerId: e.playerId, position: {x: Math.round(e.position.x), y: Math.round(e.position.y)} }));
+    }).map(e => ({ 
+        type: e.type, 
+        hp: e.hp, 
+        id: e.id, 
+        playerId: e.playerId, 
+        tilePosition: {x: Math.floor(e.position.x / TILE_SIZE), y: Math.floor(e.position.y / TILE_SIZE)} 
+    }));
 
     const enemyPlayers = Object.values(players).filter(p => p.id !== aiPlayerId).map(p => ({
         id: p.id,
@@ -40,7 +45,11 @@ function getVisibleState(state: GameState, aiPlayerId: PlayerId) {
         const tileY = Math.floor(p.position.y / TILE_SIZE);
         if (tileY < 0 || tileY >= fogOfWar.length || tileX < 0 || tileX >= fogOfWar[0].length) return false;
         return fogOfWar[tileY]?.[tileX] !== FogState.UNEXPLORED;
-    }).map(p => ({ id: p.id, position: {x: Math.round(p.position.x), y: Math.round(p.position.y)}, amount: Math.floor(p.amount) }));
+    }).map(p => ({ 
+        id: p.id, 
+        tilePosition: {x: Math.floor(p.position.x / TILE_SIZE), y: Math.floor(p.position.y / TILE_SIZE)}, 
+        amount: Math.floor(p.amount) 
+    }));
 
     return { aiPlayer, aiBuildings, aiUnits, visibleEnemies, enemyPlayers, resourcePatches: visibleResourcePatches };
 }
@@ -60,6 +69,7 @@ export async function getAICommand(state: GameState, aiPlayerId: PlayerId, aiCon
 
     const prompt = `
 This is the current game state for you, ${aiPlayerId}. Provide your next action as a single JSON object.
+The map is a grid of ${MAP_WIDTH_TILES}x${MAP_HEIGHT_TILES} tiles. All positions ('tilePosition', 'targetPosition', 'placementPosition') are given as {x, y} TILE coordinates.
 
 Your current status:
 - Credits: ${aiPlayer.credits}
@@ -74,11 +84,11 @@ Enemy Status:
 - Enemy Superweapons: ${JSON.stringify(enemyPlayers)}
 
 Possible Actions:
-1.  BUILD: Construct a new building. Choose from: ${producibleBuildings.join(', ')}.
+1.  BUILD: Construct a new building. Choose from: ${producibleBuildings.join(', ')}. You must specify a 'placementPosition' in tile coordinates.
 2.  TRAIN: Train a new unit. Choose from: ${producibleUnits.join(', ')}.
 3.  ATTACK: Send units to attack an enemy. Specify 'unitIds' and a 'attackTargetId'.
 4.  GATHER: Send an IDLE Chrono Miner to an ore patch. Specify a single 'unitId' (the miner) and 'gatherTargetId' (the patch).
-5.  LAUNCH_SUPERWEAPON: If your superweapon is ready, launch it. Specify the 'targetPosition'.
+5.  LAUNCH_SUPERWEAPON: If your superweapon is ready, launch it. Specify the 'targetPosition' in tile coordinates.
 6.  IDLE: Do nothing this turn.
 `;
 
@@ -92,13 +102,21 @@ Possible Actions:
             unitIds: { type: Type.ARRAY, items: { type: Type.STRING }, description: 'IDs of units for the action.' },
             attackTargetId: { type: Type.STRING, description: 'The ID of the enemy entity to attack if action is ATTACK' },
             gatherTargetId: { type: Type.STRING, description: 'The ID of the resource patch to gather from if action is GATHER' },
+            placementPosition: {
+                type: Type.OBJECT,
+                properties: {
+                    x: { type: Type.NUMBER },
+                    y: { type: Type.NUMBER },
+                },
+                description: 'The TILE coordinates {x, y} for a build placement.',
+            },
             targetPosition: {
                 type: Type.OBJECT,
                 properties: {
                     x: { type: Type.NUMBER },
                     y: { type: Type.NUMBER },
                 },
-                description: 'The coordinates for a superweapon strike.',
+                description: 'The TILE coordinates {x, y} for a superweapon strike.',
             },
         },
         required: ['thought', 'action'],

@@ -1,6 +1,7 @@
-
 import { GameState, AIAction, BuildingType, UnitType, Building, PlayerId, AIConfiguration, ResourcePatch, Position, Unit, GameEntity, UnitDomain } from '../types';
 import { ENTITY_CONFIGS } from '../constants';
+import { findBuildPlacement } from '../utils/aiHelpers';
+
 
 // --- AI Context and Helpers ---
 
@@ -19,6 +20,7 @@ interface AIContext {
     hasBuilding: (type: BuildingType) => boolean;
     countBuilding: (type: BuildingType) => number;
     getProducers: (unitType: UnitType) => Building[];
+    getHqPosition: () => Position;
 }
 
 function findNearestEntity(position: Position, entities: GameEntity[]): GameEntity | null {
@@ -80,9 +82,9 @@ function findBestAttackTarget(ctx: AIContext): GameEntity | null {
         score += (1 - (enemy.hp / enemy.maxHp)) * 20;
         
         // Prioritize closer targets
-        const hq = ctx.gameState.entities[ctx.aiPlayerState.hqId];
-        if (hq) {
-             const dist = Math.hypot(enemy.position.x - hq.position.x, enemy.position.y - hq.position.y);
+        const hqPos = ctx.getHqPosition();
+        if (hqPos) {
+             const dist = Math.hypot(enemy.position.x - hqPos.x, enemy.position.y - hqPos.y);
              score -= dist / 100;
         }
 
@@ -92,7 +94,7 @@ function findBestAttackTarget(ctx: AIContext): GameEntity | null {
         }
     }
     
-    return bestTarget || findNearestEntity(ctx.allAiEntities[0].position, ctx.enemyEntities);
+    return bestTarget || findNearestEntity(ctx.getHqPosition(), ctx.enemyEntities);
 }
 
 // --- High-Level AI Behaviors ---
@@ -112,6 +114,11 @@ function manageRepairs(ctx: AIContext): AIAction | null {
 }
 
 function manageEconomy(ctx: AIContext, minerTarget: number, refineryTarget: number): AIAction | null {
+    const build = (buildingType: BuildingType, thought: string): AIAction | null => {
+        const pos = findBuildPlacement(buildingType, ctx.allAiEntities, ctx.getHqPosition(), ctx.gameState.terrain);
+        return pos ? { action: 'BUILD', buildingType, placementPosition: pos, thought, playerId: ctx.aiPlayerId } : null;
+    };
+    
     // 1. Assign idle miners
     const idleMiners = ctx.aiMiners.filter(u => u.status === 'IDLE');
     if (idleMiners.length > 0) {
@@ -135,12 +142,12 @@ function manageEconomy(ctx: AIContext, minerTarget: number, refineryTarget: numb
     
     // 2. Build Power if needed for refinery
     if (ctx.powerDeficit && ctx.countBuilding(BuildingType.REFINERY) < refineryTarget && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.POWER_PLANT].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.POWER_PLANT, thought: 'Need more power before expanding economy.', playerId: ctx.aiPlayerId };
+        return build(BuildingType.POWER_PLANT, 'Need more power before expanding economy.');
     }
     
     // 3. Build Refineries
     if (ctx.countBuilding(BuildingType.REFINERY) < refineryTarget && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.REFINERY].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.REFINERY, thought: 'Expanding my economic infrastructure.', playerId: ctx.aiPlayerId };
+        return build(BuildingType.REFINERY, 'Expanding my economic infrastructure.');
     }
     
     // 4. Train Miners
@@ -159,7 +166,8 @@ function manageSupport(ctx: AIContext): AIAction | null {
 
     // Build Repair Bay
     if (vehicleCount > 3 && !ctx.hasBuilding(BuildingType.REPAIR_BAY) && ctx.aiPlayerState.credits > ENTITY_CONFIGS[BuildingType.REPAIR_BAY].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.REPAIR_BAY, thought: 'My army needs mechanical support. Building a Repair Bay.', playerId: ctx.aiPlayerId };
+        const pos = findBuildPlacement(BuildingType.REPAIR_BAY, ctx.allAiEntities, ctx.getHqPosition(), ctx.gameState.terrain);
+        if (pos) return { action: 'BUILD', buildingType: BuildingType.REPAIR_BAY, placementPosition: pos, thought: 'My army needs mechanical support. Building a Repair Bay.', playerId: ctx.aiPlayerId };
     }
 
     // Train Engineers
@@ -174,19 +182,23 @@ function manageSupport(ctx: AIContext): AIAction | null {
 
 function manageMilitary(ctx: AIContext, unitComposition: Partial<Record<UnitType, number>>, armySizeTarget: number): AIAction | null {
     const combatUnits = ctx.aiUnits.filter(u => u.type !== UnitType.CHRONO_MINER && u.type !== UnitType.ENGINEER);
+    const build = (buildingType: BuildingType, thought: string): AIAction | null => {
+        const pos = findBuildPlacement(buildingType, ctx.allAiEntities, ctx.getHqPosition(), ctx.gameState.terrain);
+        return pos ? { action: 'BUILD', buildingType, placementPosition: pos, thought, playerId: ctx.aiPlayerId } : null;
+    };
 
     // 1. Build prerequisites first
     if (!ctx.hasBuilding(BuildingType.BARRACKS) && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.BARRACKS].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.BARRACKS, thought: 'Need a Barracks to train infantry.', playerId: ctx.aiPlayerId };
+        return build(BuildingType.BARRACKS, 'Need a Barracks to train infantry.');
     }
      if (!ctx.hasBuilding(BuildingType.WAR_FACTORY) && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.WAR_FACTORY].cost) {
-        return { action: 'BUILD', buildingType: BuildingType.WAR_FACTORY, thought: 'A War Factory is required for vehicles.', playerId: ctx.aiPlayerId };
+        return build(BuildingType.WAR_FACTORY, 'A War Factory is required for vehicles.');
     }
     
     // 2. Ensure enough power for production buildings
     if (ctx.powerDeficit && (ctx.getProducers(UnitType.RIFLEMAN).length > 0 || ctx.getProducers(UnitType.TANK).length > 0)) {
          if(ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.POWER_PLANT].cost) {
-             return { action: 'BUILD', buildingType: BuildingType.POWER_PLANT, thought: 'Powering up my production facilities.', playerId: ctx.aiPlayerId };
+             return build(BuildingType.POWER_PLANT, 'Powering up my production facilities.');
          }
     }
     
@@ -268,7 +280,8 @@ export function getLocalAICommand(state: GameState, aiPlayerId: PlayerId, aiConf
         getProducers: (unitType: UnitType) => {
             const producerType = ENTITY_CONFIGS[unitType].producedBy;
             return aiBuildings.filter(b => b.type === producerType && b.isPowered && !b.isConstructing);
-        }
+        },
+        getHqPosition: () => state.entities[aiPlayerState.hqId].position,
     };
     
     // --- Universal High-Priority Actions ---

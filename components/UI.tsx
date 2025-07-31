@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { AIDifficulty, GameStatus, AIPersonality, AIConfiguration, PlayerState, BuildingType } from '../types';
+import { AIDifficulty, GameStatus, AIPersonality, AIConfiguration, PlayerState, BuildingType, PlayerStats } from '../types';
 import { soundService } from '../services/soundService';
 import { EntityIcon } from './icons';
 import { ENTITY_CONFIGS } from '../constants';
@@ -119,14 +119,37 @@ export const MainMenu = ({ onStartGame }: { onStartGame: (options: { opponents: 
     );
 };
 
-export const GameOverScreen = ({ status, onRestart, onMainMenu }: { status: GameStatus, onRestart: () => void, onMainMenu: () => void }) => (
-    <div className="w-screen h-screen flex flex-col items-center justify-center bg-black/80 text-white space-y-6">
-        <h1 className={`text-7xl font-bold ${status === 'PLAYER_WIN' ? 'text-green-400' : 'text-red-500'}`}>
-            {status === 'PLAYER_WIN' ? 'VICTORY' : 'DEFEAT'}
-        </h1>
-        <div className="flex flex-col space-y-4 md:w-80">
-            <MenuButton onClick={onRestart}>Play Again</MenuButton>
-            <MenuButton onClick={onMainMenu}>Main Menu</MenuButton>
+export const GameOverScreen = ({ status, gameSummary, onRestart, onMainMenu }: { status: GameStatus, gameSummary: Record<string, PlayerStats> | null, onRestart: () => void, onMainMenu: () => void }) => (
+    <div className="w-screen h-screen flex flex-col items-center justify-center bg-black/80 text-white p-4 z-50 absolute inset-0">
+        <div className="w-full max-w-4xl flex flex-col items-center space-y-6">
+            <h1 className={`text-7xl font-bold ${status === 'PLAYER_WIN' ? 'text-green-400' : 'text-red-500'}`} style={{ textShadow: '0 0 15px currentColor' }}>
+                {status === 'PLAYER_WIN' ? 'VICTORY' : 'DEFEAT'}
+            </h1>
+            
+            {gameSummary && (
+                <div className="w-full bg-gray-900/80 p-6 rounded-lg border-2 border-gray-700 backdrop-blur-sm">
+                    <h2 className="text-3xl font-bold text-center mb-4 text-cyan-300">Game Summary</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-gray-300">
+                        {Object.entries(gameSummary).sort(([pIdA], [pIdB]) => pIdA === 'PLAYER_1' ? -1 : (pIdB === 'PLAYER_1' ? 1 : pIdA.localeCompare(pIdB))).map(([playerId, stats]) => (
+                            <div key={playerId} className="bg-gray-800 p-4 rounded-lg border border-gray-600">
+                                <h3 className={`text-xl font-bold mb-3 ${playerId === 'PLAYER_1' ? 'text-blue-400' : 'text-red-400'}`}>{playerId.replace('_', ' ')}</h3>
+                                <ul className="space-y-2 text-sm">
+                                    <li className="flex justify-between"><span>Kills:</span> <span className="font-bold text-white">{stats.enemiesKilled}</span></li>
+                                    <li className="flex justify-between"><span>Losses:</span> <span className="font-bold text-white">{stats.unitsLost}</span></li>
+                                    <li className="flex justify-between"><span>Credits Earned:</span> <span className="font-bold text-white">{stats.creditsEarned}</span></li>
+                                    <li className="flex justify-between"><span>Units Built:</span> <span className="font-bold text-white">{Object.values(stats.unitsBuilt).reduce((a, b) => a + b, 0)}</span></li>
+                                    <li className="flex justify-between"><span>Buildings Built:</span> <span className="font-bold text-white">{Object.values(stats.buildingsConstructed).reduce((a, b) => a + b, 0)}</span></li>
+                                </ul>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            <div className="flex flex-col space-y-4 w-full md:w-80">
+                <MenuButton onClick={onRestart}>Play Again</MenuButton>
+                <MenuButton onClick={onMainMenu}>Main Menu</MenuButton>
+            </div>
         </div>
     </div>
 );

@@ -179,6 +179,14 @@ export interface AIConfiguration {
     difficulty: AIDifficulty;
 }
 
+export interface PlayerStats {
+  unitsBuilt: Partial<Record<UnitType, number>>;
+  buildingsConstructed: Partial<Record<BuildingType, number>>;
+  unitsLost: number;
+  enemiesKilled: number;
+  creditsEarned: number;
+}
+
 export interface GameState {
   entities: Record<string, GameEntity>;
   players: Record<PlayerId, PlayerState>;
@@ -193,6 +201,8 @@ export interface GameState {
   isChronoTeleportPending: boolean;
   resourcePatches: Record<string, ResourcePatch>;
   controlGroups: Record<string, string[]>;
+  gameStats: Record<PlayerId, PlayerStats>;
+  gameSummary: Record<PlayerId, PlayerStats> | null;
 }
 
 export type AIActionType = 'BUILD' | 'TRAIN' | 'ATTACK' | 'IDLE' | 'LAUNCH_SUPERWEAPON' | 'GATHER' | 'REPAIR';
