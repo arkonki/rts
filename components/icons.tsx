@@ -1,17 +1,8 @@
-
 import React from 'react';
 import { BuildingType, UnitType } from '../types';
 import {
-  FaStar,
-  FaBolt,
-  FaGasPump,
-  FaCampground,
-  FaIndustry,
-  FaPlane,
-  FaAnchor,
   FaQuestion,
   FaHardHat,
-  FaTools,
 } from 'react-icons/fa';
 import {
   GiRifle,
@@ -27,22 +18,33 @@ import {
   GiMineWagon,
   GiVortex,
   GiNuclearBomb,
+  // Available in v5.2.1:
+  GiRadarDish,        // HQ
+  GiPowerGenerator,   // Power Plant
+  GiOilDrum,          // Refinery
+  GiBarracksTent,     // Barracks
+  GiFactory,          // War Factory
+  GiAirplane,         // Airfield
+  GiShipBow,          // Naval Yard
+  GiCarWheel,         // Repair Bay
+  GiTankTread,        // Prism Tank
+  GiSailboat,         // Sea Scorpion
+  GiMechanicalArm,    // Engineer
+  GiMissileLauncher,  // Nuclear Silo
+  GiTwoCoins,         // Credits Icon
+  GiLightningStorm,   // Power Icon
 } from 'react-icons/gi';
 
-export const PowerIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
-    <path
-      fillRule="evenodd"
-      d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z"
-      clipRule="evenodd"
-    />
-  </svg>
+export const CreditsIcon = () => (
+    <div className="w-full h-full text-yellow-400">
+        <GiTwoCoins className="w-full h-full" />
+    </div>
 );
 
-export const CreditsIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-    {/* SVG content unchanged */}
-  </svg>
+export const PowerIcon = () => (
+    <div className="w-full h-full text-cyan-400">
+        <GiLightningStorm className="w-full h-full" />
+    </div>
 );
 
 export const EntityIcon = ({ type, size = '10' }: { type: BuildingType | UnitType; size?: string }) => {
@@ -56,74 +58,74 @@ export const EntityIcon = ({ type, size = '10' }: { type: BuildingType | UnitTyp
   switch (type) {
     // Buildings
     case BuildingType.HQ:
-      IconComponent = FaStar;
+      IconComponent = GiRadarDish;
       bgClass = 'bg-blue-600';
       borderClass = 'border-blue-300';
       shapeClass = 'rounded-sm';
       break;
 
     case BuildingType.POWER_PLANT:
-      IconComponent = FaBolt;
+      IconComponent = GiPowerGenerator;
       bgClass = 'bg-yellow-600';
       borderClass = 'border-yellow-300';
       shapeClass = 'rounded-sm';
       break;
 
     case BuildingType.REFINERY:
-      IconComponent = FaGasPump;
+      IconComponent = GiOilDrum;
       bgClass = 'bg-green-700';
       borderClass = 'border-green-400';
       shapeClass = 'rounded-sm';
       break;
 
     case BuildingType.BARRACKS:
-      IconComponent = FaCampground;
+      IconComponent = GiBarracksTent;
       bgClass = 'bg-gray-600';
       borderClass = 'border-gray-300';
       shapeClass = 'rounded-sm';
       break;
 
     case BuildingType.WAR_FACTORY:
-      IconComponent = FaIndustry;
+      IconComponent = GiFactory;
       bgClass = 'bg-red-800';
       borderClass = 'border-red-500';
       shapeClass = 'rounded-sm';
       break;
 
     case BuildingType.AIRFIELD:
-      IconComponent = FaPlane;
+      IconComponent = GiAirplane;
       bgClass = 'bg-sky-600';
       borderClass = 'border-sky-300';
       shapeClass = 'rounded-sm';
       break;
 
     case BuildingType.NAVAL_YARD:
-      IconComponent = FaAnchor;
+      IconComponent = GiShipBow;
       bgClass = 'bg-indigo-600';
       borderClass = 'border-indigo-300';
       shapeClass = 'rounded-sm';
       break;
     
     case BuildingType.REPAIR_BAY:
-        IconComponent = FaTools;
-        bgClass = 'bg-orange-600';
-        borderClass = 'border-orange-300';
-        shapeClass = 'rounded-sm';
-        break;
+      IconComponent = GiCarWheel;
+      bgClass = 'bg-orange-600';
+      borderClass = 'border-orange-300';
+      shapeClass = 'rounded-sm';
+      break;
 
     case BuildingType.CHRONO_SPHERE:
-        IconComponent = GiVortex;
-        bgClass = 'bg-purple-700';
-        borderClass = 'border-purple-400';
-        shapeClass = 'rounded-sm';
-        break;
+      IconComponent = GiVortex;
+      bgClass = 'bg-purple-700';
+      borderClass = 'border-purple-400';
+      shapeClass = 'rounded-sm';
+      break;
 
     case BuildingType.NUCLEAR_MISSILE_SILO:
-        IconComponent = GiNuclearBomb;
-        bgClass = 'bg-red-900';
-        borderClass = 'border-yellow-400';
-        shapeClass = 'rounded-sm';
-        break;
+      IconComponent = GiMissileLauncher;
+      bgClass = 'bg-red-900';
+      borderClass = 'border-yellow-400';
+      shapeClass = 'rounded-sm';
+      break;
 
     // Units
     case UnitType.RIFLEMAN:
@@ -134,7 +136,7 @@ export const EntityIcon = ({ type, size = '10' }: { type: BuildingType | UnitTyp
       break;
     
     case UnitType.ENGINEER:
-      IconComponent = FaHardHat;
+      IconComponent = GiMechanicalArm;
       bgClass = 'bg-orange-500';
       borderClass = 'border-orange-200';
       shapeClass = 'rounded-full';
@@ -155,7 +157,7 @@ export const EntityIcon = ({ type, size = '10' }: { type: BuildingType | UnitTyp
       break;
 
     case UnitType.PRISM_TANK:
-      IconComponent = GiPrism;
+      IconComponent = GiTankTread;
       bgClass = 'bg-cyan-500';
       borderClass = 'border-cyan-200';
       shapeClass = 'rounded-md';
@@ -204,7 +206,7 @@ export const EntityIcon = ({ type, size = '10' }: { type: BuildingType | UnitTyp
       break;
 
     case UnitType.SEA_SCORPION:
-      IconComponent = GiSpeedBoat;
+      IconComponent = GiSailboat;
       bgClass = 'bg-teal-500';
       borderClass = 'border-teal-200';
       shapeClass = 'rounded-sm';

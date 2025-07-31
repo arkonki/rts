@@ -1,19 +1,22 @@
 
-import React, { useReducer, useState } from 'react';
+import React, { useReducer, useState, useMemo } from 'react';
 import { INITIAL_STATE } from './state/reducer';
 import { gameReducer } from './state/reducer';
 import { MainMenu, GameOverScreen, PauseMenu, ControlsModal, SuperweaponIndicator, ControlGroupsBar } from './components/UI';
 import { Sidebar } from './components/Sidebar';
 import { TerrainCanvas, FogCanvas } from './components/Canvas';
 import { GameEntityComponent } from './components/GameEntityComponent';
+import { UnitClusterComponent } from './components/UnitClusterComponent';
+import { clusterEntities, Renderable } from './utils/clustering';
 import { ResourcePatchComponent } from './components/ResourceComponent';
 import { GhostBuilding, SelectionBox, RallyPointFlag } from './components/GameOverlay';
 import { useGameLoop } from './hooks/useGameLoop';
 import { useAI } from './hooks/useAI';
 import { useInputHandling } from './hooks/useInputHandling';
 import { MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, PLAYER_COLORS } from './constants';
-import { FogState, GameEntity } from './types';
+import { FogState, GameEntity, Unit } from './types';
 import { VisualEffectsLayer } from './components/VisualEffects';
+import { soundService } from './services/soundService';
 
 function App() {
   const [state, dispatch] = useReducer(gameReducer, INITIAL_STATE);
@@ -39,6 +42,43 @@ function App() {
   const humanPlayerState = state.players[humanPlayerId];
   const selectedEntity = state.selectedIds.length === 1 ? state.entities[state.selectedIds[0]] as GameEntity : null;
   const cursorClass = state.isChronoTeleportPending ? 'cursor-grab' : isAttackMovePending ? 'cursor-cell' : placingBuildingType ? 'cursor-copy' : 'cursor-crosshair';
+  
+  const CLUSTER_DISTANCE = TILE_SIZE * 0.8;
+  const renderableItems = useMemo(() => clusterEntities(state.entities, CLUSTER_DISTANCE), [state.entities]);
+
+  const handleMouseDownWithRenderables = (e: React.MouseEvent<HTMLDivElement>) => {
+    // If a click lands on an entity, that component's handler will stop propagation.
+    // If it reaches here, it's a click on the ground.
+    gameEventHandlers.handleMouseDown(e);
+  };
+  
+  const handleEntityClick = (e: React.MouseEvent, item: Renderable) => {
+    e.stopPropagation();
+    if (e.button === 0) { // Left click
+      soundService.play('click');
+      let idsToSelect: string[] = [];
+      const isCluster = 'isCluster' in item && item.isCluster;
+
+      if (isCluster) {
+        idsToSelect = item.units.map((u: Unit) => u.id);
+      } else {
+        idsToSelect = [item.id];
+      }
+      
+      const firstEntity = state.entities[idsToSelect[0]];
+
+      if (firstEntity && firstEntity.playerId === humanPlayerId) {
+        const newSelection = e.shiftKey
+          ? Array.from(new Set([...state.selectedIds, ...idsToSelect]))
+          : idsToSelect;
+        dispatch({ type: 'SELECT', payload: newSelection });
+      } else { // Clicked an enemy entity
+        if (state.selectedIds.some(sid => state.entities[sid] && 'status' in state.entities[sid])) {
+            dispatch({ type: 'COMMAND_ATTACK', payload: item.id });
+        }
+      }
+    }
+  };
 
   if (state.gameStatus === 'MENU') {
     return <MainMenu onStartGame={(options) => dispatch({ type: 'START_GAME', payload: options })} />;
@@ -52,7 +92,7 @@ function App() {
       <div className="flex h-screen w-screen bg-black font-mono overflow-hidden">
         <main ref={mainRef} onMouseMove={gameEventHandlers.handleMouseMove} className="flex-1 relative bg-gray-900 overflow-hidden">
           <div className={`absolute ${cursorClass}`} style={{ width: MAP_WIDTH, height: MAP_HEIGHT, transform: `translate(${-state.viewport.x}px, ${-state.viewport.y}px)`}}
-            onMouseDown={gameEventHandlers.handleMouseDown} onMouseUp={gameEventHandlers.handleMouseUp} onContextMenu={gameEventHandlers.handleRightClick} >
+            onMouseDown={handleMouseDownWithRenderables} onMouseUp={gameEventHandlers.handleMouseUp} onContextMenu={gameEventHandlers.handleRightClick} >
             
             <TerrainCanvas terrain={state.terrain} />
 
@@ -65,15 +105,34 @@ function App() {
               return null;
             })}
 
-            {Object.values(state.entities).map(entity => {
-              const tileX = Math.floor(entity.position.x / TILE_SIZE);
-              const tileY = Math.floor(entity.position.y / TILE_SIZE);
-              if (entity.playerId === humanPlayerId || state.fogOfWar[tileY]?.[tileX] === FogState.VISIBLE || (state.fogOfWar[tileY]?.[tileX] === FogState.EXPLORED && 'isPowered' in entity)) {
-                const playerIndex = Object.keys(state.players).indexOf(entity.playerId);
-                const borderColor = PLAYER_COLORS[playerIndex] || 'border-gray-400';
-                return <GameEntityComponent key={entity.id} entity={entity} isSelected={state.selectedIds.includes(entity.id)} borderColor={borderColor} />
+            {renderableItems.map(item => {
+              const tileX = Math.floor(item.position.x / TILE_SIZE);
+              const tileY = Math.floor(item.position.y / TILE_SIZE);
+
+              // Cluster rendering
+              if ('isCluster' in item && item.isCluster) {
+                  const isVisible = item.playerId === humanPlayerId || state.fogOfWar[tileY]?.[tileX] === FogState.VISIBLE;
+                  if (!isVisible) return null;
+
+                  const playerIndex = Object.keys(state.players).indexOf(item.playerId);
+                  const borderColor = PLAYER_COLORS[playerIndex] || 'border-gray-400';
+                  const isSelected = item.units.some(u => state.selectedIds.includes(u.id));
+                  
+                  return <UnitClusterComponent key={item.id} cluster={item} isSelected={isSelected} borderColor={borderColor} onEntityClick={handleEntityClick} />;
               }
-              return null;
+              
+              // Single entity rendering
+              const entity = item as GameEntity;
+              const isVisible = entity.playerId === humanPlayerId 
+                  || state.fogOfWar[tileY]?.[tileX] === FogState.VISIBLE 
+                  || (state.fogOfWar[tileY]?.[tileX] === FogState.EXPLORED && 'isPowered' in entity);
+              
+              if (!isVisible) return null;
+
+              const playerIndex = Object.keys(state.players).indexOf(entity.playerId);
+              const borderColor = PLAYER_COLORS[playerIndex] || 'border-gray-400';
+
+              return <GameEntityComponent key={entity.id} entity={entity} isSelected={state.selectedIds.includes(entity.id)} borderColor={borderColor} onEntityClick={handleEntityClick} />
             })}
 
             <FogCanvas fog={state.fogOfWar} />

@@ -72,35 +72,13 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
-  
-  const handleEntityClick = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    const entity = state.entities[id];
-    if (!entity) return;
-    if (entity.playerId === humanPlayerId) {
-        soundService.play('click');
-        const newSelection = e.shiftKey ? state.selectedIds.includes(id) ? state.selectedIds.filter(sid => sid !== id) : [...state.selectedIds, id] : [id];
-        dispatch({ type: 'SELECT', payload: newSelection });
-    } else if (state.selectedIds.some(sid => state.entities[sid] && 'status' in state.entities[sid])) {
-        dispatch({ type: 'COMMAND_ATTACK', payload: entity.id });
-    }
-  };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0 || placingBuildingType || isAttackMovePending) return;
-    const mapCoords = getMapCoords(e.clientX, e.clientY);
-    const clickedEntity = Object.values(state.entities).find(entity => {
-        const dx = mapCoords.x - entity.position.x;
-        const dy = mapCoords.y - entity.position.y;
-        return (dx * dx + dy * dy) < (entity.size / 2) * (entity.size / 2);
-    });
-    if (clickedEntity) {
-        handleEntityClick(e, clickedEntity.id);
-    }
-    else { 
-        setIsDragging(true); 
-        setDragStartPos(mapCoords); 
-    }
+    // This now only handles ground clicks, which start a drag.
+    // Entity clicks are handled by their own components and stop propagation.
+    setIsDragging(true); 
+    setDragStartPos(getMapCoords(e.clientX, e.clientY)); 
   };
   
   const handleMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -115,13 +93,26 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
     }
     if (isDragging && dragStartPos) {
         const dragDistance = Math.hypot(mapCoords.x - dragStartPos.x, mapCoords.y - dragStartPos.y);
-        if (dragDistance < 10 && !e.shiftKey) { // Simple click deselects
-            dispatch({ type: 'SELECT', payload: [] });
+        if (dragDistance < 10) { // Simple click on ground deselects
+            if (!e.shiftKey) dispatch({ type: 'SELECT', payload: [] });
         } else {
             const startX = Math.min(dragStartPos.x, mapCoords.x); const startY = Math.min(dragStartPos.y, mapCoords.y);
             const endX = Math.max(dragStartPos.x, mapCoords.x); const endY = Math.max(dragStartPos.y, mapCoords.y);
-            const selectedIds = Object.values(state.entities).filter(e => e.playerId === humanPlayerId && 'status' in e && e.position.x > startX && e.position.x < endX && e.position.y > startY && e.position.y < endY).map(e => e.id);
-            dispatch({ type: 'SELECT', payload: selectedIds });
+            // Select all player units within the drag box
+            const selectedIds = Object.values(state.entities)
+              .filter(entity => 
+                  entity.playerId === humanPlayerId && 
+                  'status' in entity && 
+                  entity.position.x > startX && entity.position.x < endX && 
+                  entity.position.y > startY && entity.position.y < endY
+              )
+              .map(e => e.id);
+            
+            const newSelection = e.shiftKey
+              ? Array.from(new Set([...state.selectedIds, ...selectedIds]))
+              : selectedIds;
+
+            dispatch({ type: 'SELECT', payload: newSelection });
         }
     }
     setIsDragging(false); setDragStartPos(null);

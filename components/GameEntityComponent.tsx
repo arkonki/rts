@@ -20,7 +20,14 @@ const CargoBar = ({ cargo, capacity }: { cargo: number; capacity: number }) => {
     );
 };
 
-export const GameEntityComponent = React.memo(({ entity, isSelected, borderColor }: { entity: GameEntity; isSelected: boolean; borderColor: string; }) => {
+interface GameEntityComponentProps {
+    entity: GameEntity;
+    isSelected: boolean;
+    borderColor: string;
+    onEntityClick: (e: React.MouseEvent, entity: GameEntity) => void;
+}
+
+export const GameEntityComponent = React.memo(({ entity, isSelected, borderColor, onEntityClick }: GameEntityComponentProps) => {
   const isBuilding = 'isPowered' in entity;
   const selectionBorderColor = 'border-cyan-400';
   const displayBorderColor = isSelected ? selectionBorderColor : borderColor;
@@ -43,7 +50,8 @@ export const GameEntityComponent = React.memo(({ entity, isSelected, borderColor
 
   return (
     <div className={`absolute flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 ${isConstructing ? 'opacity-60' : ''}`}
-         style={entityStyle}>
+         style={entityStyle}
+         onMouseDown={(e) => onEntityClick(e, entity)}>
       {isAirUnit && (
         <div 
           className="absolute bg-black rounded-full opacity-30" 
