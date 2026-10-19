@@ -1,9 +1,6 @@
 import React from 'react';
 import { BuildingType, UnitType } from '../types';
-import {
-  FaQuestion,
-  FaHardHat,
-} from 'react-icons/fa';
+import { FaQuestion } from 'react-icons/fa';
 import {
   GiRifle,
   GiTeslaCoil,

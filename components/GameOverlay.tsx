@@ -8,7 +8,7 @@ interface GhostBuildingProps {
     placingBuildingType: BuildingType | null;
     mousePos: Position;
     viewport: Position;
-    mainRef: React.RefObject<HTMLDivElement>;
+    mainRef: React.RefObject<HTMLDivElement | null>;
     terrain: TerrainType[][];
     entities: Record<string, GameEntity>;
     playerCredits: number;
@@ -46,7 +46,7 @@ interface SelectionBoxProps {
     dragStartPos: Position | null;
     mousePos: Position;
     viewport: Position;
-    mainRef: React.RefObject<HTMLDivElement>;
+    mainRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export const SelectionBox = ({ isDragging, dragStartPos, mousePos, viewport, mainRef }: SelectionBoxProps) => {

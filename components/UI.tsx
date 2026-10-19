@@ -138,8 +138,8 @@ export const GameOverScreen = ({ status, gameSummary, onRestart, onMainMenu }: {
                                     <li className="flex justify-between"><span>Kills:</span> <span className="font-bold text-white">{stats.enemiesKilled}</span></li>
                                     <li className="flex justify-between"><span>Losses:</span> <span className="font-bold text-white">{stats.unitsLost}</span></li>
                                     <li className="flex justify-between"><span>Credits Earned:</span> <span className="font-bold text-white">{stats.creditsEarned}</span></li>
-                                    <li className="flex justify-between"><span>Units Built:</span> <span className="font-bold text-white">{Object.values(stats.unitsBuilt).reduce((a, b) => a + b, 0)}</span></li>
-                                    <li className="flex justify-between"><span>Buildings Built:</span> <span className="font-bold text-white">{Object.values(stats.buildingsConstructed).reduce((a, b) => a + b, 0)}</span></li>
+                                    <li className="flex justify-between"><span>Units Built:</span> <span className="font-bold text-white">{Object.values(stats.unitsBuilt).reduce((a, b) => a + (b ?? 0), 0)}</span></li>
+                                    <li className="flex justify-between"><span>Buildings Built:</span> <span className="font-bold text-white">{Object.values(stats.buildingsConstructed).reduce((a, b) => a + (b ?? 0), 0)}</span></li>
                                 </ul>
                             </div>
                         ))}

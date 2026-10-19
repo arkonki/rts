@@ -8,7 +8,7 @@ export function useGameLoop(
   state: GameState,
   dispatch: React.Dispatch<GameAction>,
   mousePosRef: React.MutableRefObject<Position>,
-  mainRef: React.RefObject<HTMLDivElement>,
+  mainRef: React.RefObject<HTMLDivElement | null>,
   viewportSize: React.MutableRefObject<{ width: number; height: number; }>,
   isMouseOverSidebar: boolean
 ) {

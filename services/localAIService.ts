@@ -123,7 +123,7 @@ function manageEconomy(ctx: AIContext, minerTarget: number, refineryTarget: numb
     const idleMiners = ctx.aiMiners.filter(u => u.status === 'IDLE');
     if (idleMiners.length > 0) {
         const assignedPatches = new Set(ctx.aiMiners.map(m => m.gatherTargetId).filter(Boolean));
-        let nearestPatch: ResourcePatch | null = null;
+        let nearestPatch = null as ResourcePatch | null; // assigned in a callback below; the cast stops TS narrowing it to null
         let minDist = Infinity;
         
         Object.values(ctx.gameState.resourcePatches).forEach(p => {

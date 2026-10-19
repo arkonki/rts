@@ -9,8 +9,8 @@ export function updatePlayerPowerAndSuperweapons(state: GameState, ctx: TickCont
 
     Object.keys(newPlayers).forEach(playerId => {
         let power = { produced: 0, consumed: 0 };
-        let superweaponBuilding: Building | null = null;
-        let superweaponType: BuildingType.CHRONO_SPHERE | BuildingType.NUCLEAR_MISSILE_SILO | null = null;
+        let superweaponBuilding = null as Building | null; // assigned in a callback below; the cast stops TS narrowing it to null
+        let superweaponType = null as BuildingType.CHRONO_SPHERE | BuildingType.NUCLEAR_MISSILE_SILO | null;
 
         Object.values(state.entities).forEach(entity => {
             if (entity.playerId === playerId && 'isPowered' in entity) {

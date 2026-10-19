@@ -135,7 +135,7 @@ Possible Actions:
             }
         });
 
-        const jsonText = response.text.trim();
+        const jsonText = (response.text ?? '').trim();
         const aiAction = JSON.parse(jsonText);
         return { ...aiAction, playerId: aiPlayerId } as AIAction;
     } catch (error) {

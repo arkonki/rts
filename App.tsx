@@ -12,7 +12,6 @@ import { useSoundEvents } from './hooks/useSoundEvents';
 import { newSeed } from './utils/random';
 import { MAP_WIDTH, MAP_HEIGHT, PLAYER_COLORS, TILE_SIZE } from './constants';
 import { GameEntity, FogState } from './types';
-import { soundService } from './services/soundService';
 import { VisualEffectsLayer } from './components/VisualEffects';
 import { GameEntityComponent } from './components/GameEntityComponent';
 import { UnitClusterComponent } from './components/UnitClusterComponent';

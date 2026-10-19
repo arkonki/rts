@@ -41,7 +41,7 @@ The simulation ticks every 100 ms and the whole `GameState` flows through React,
 | 2.5 | P1 | **Minimap redraws everything per tick.** It iterates terrain and fog tile-by-tile on every `entities` change (`Minimap.tsx:101`). | Pre-render terrain to an offscreen canvas once, draw fog only when it changes, and draw entities in a separate lightweight pass. |
 | 2.6 | P1 | **Timing uses `setInterval` with an assumed 100 ms step.** Background-tab throttling or a slow frame slows the game down. Unit speed is `2` px per tick. | Use `requestAnimationFrame` plus a fixed-timestep accumulator driven by `performance.now()`. Make unit speed a per-unit config value in `ENTITY_CONFIGS`. |
 | 2.7 | P2 | `useGameLoop` tears down and recreates the scroll interval on every mouse move (`mousePos` is a dependency). | Read `mousePos` from a ref inside one stable interval or `rAF` loop. |
-| 2.8 | P2 | Entities are DOM `<div>`s with Tailwind classes, plus an SVG per attack line. This will struggle past a few hundred units. | Render units and effects to a single `<canvas>` (the terrain and fog already use canvas). There is a `utils/canvasIconRenderer.ts` that is unused and could help. |
+| 2.8 | P2 | Entities are DOM `<div>`s with Tailwind classes, plus an SVG per attack line. This will struggle past a few hundred units. | Render units and effects to a single `<canvas>` (the terrain and fog already use canvas). (`utils/canvasIconRenderer.ts` and `components/EntitiesCanvas.tsx` were empty files and have been deleted.) |
 | 2.9 | P2 | `SpatialGrid` is rebuilt from scratch every tick, and `findNearestEnemy` is called for each idle unit. | Fine at the current scale. Revisit if unit counts grow. Only rebuild moved entities. |
 
 ---
@@ -77,7 +77,7 @@ The simulation ticks every 100 ms and the whole `GameState` flows through React,
 - **Movement has no collision or separation.** Units stack on the same tile, buildings are not obstacles in pathfinding (units walk through them), and diagonal moves can cut corners around mountains. A simple separation steering pass plus marking building footprints as blocked would fix most of it.
 - **Pathfinding heuristic.** `findPath` uses Manhattan distance with 8-way movement and uniform diagonal cost. It is inadmissible, so paths are not guaranteed shortest. Use octile distance with √2 diagonals (as `map.ts` already does with Euclidean).
 - **Duplicate A\*.** `utils/map.ts` has its own pathfinder. Share one generic implementation with a cost function.
-- **Unused code to remove or use:** `utils/canvasIconRenderer.ts` (nothing imports it), `DIFFICULTY_SETTINGS.aggressionThreshold`, `services/geminiService.ts`, and the `'LOADING'` game status (never set).
+- **Unused code to remove or use:** `DIFFICULTY_SETTINGS.aggressionThreshold`, `services/geminiService.ts`, and the `'LOADING'` game status (never set).
 
 ---
 
@@ -153,3 +153,7 @@ How purity works now:
 - All generated ids, including visual effect ids that used to collide when several units hit one target in a tick, come from `state.nextId`.
 
 Still to do from section 4: entity `kind` discriminant, deduplicating the remaining `requires` normalisation, constants for magic numbers.
+
+Tooling done (not yet run: no Node toolchain was available): `npm run typecheck`, `lint`, `test` and `check` scripts, strict TypeScript with `@types/react` added, ESLint 9 flat config (most legacy issues are warnings, not errors), Vitest tests in `tests/` for pathfinding, placement, production and construction, power, win conditions, the AI and the reducer's purity, a GitHub Actions workflow (`.github/workflows/ci.yml`), and `index.html` cleanup (Tailwind v3 now bundled via PostCSS, importmap and CDN scripts removed, fonts via `<link>`, styles moved to `index.css`). The package was renamed to `ai-rts-red-alert`.
+
+First thing to do after pulling: `npm install && npm run check && npm run build`. Strict mode and the new React types were enabled without being able to run `tsc`, so expect a few type errors to fix, and a lockfile to commit.

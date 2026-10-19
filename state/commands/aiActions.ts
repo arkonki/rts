@@ -39,7 +39,7 @@ export function performAIAction(state: GameState, aiAction: AIAction): GameState
                         newState.entities = { ...newState.entities, [newId]: newBuilding };
                         newState.players = { ...newState.players, [playerId]: newAiPlayerState };
                     } else {
-                        message = thought + ` (Failed to place at ${placementPosition.x}, ${placementPosition.y}: ${placementError})`;
+                        message += ` (Failed to place at ${placementPosition.x}, ${placementPosition.y}: ${placementError})`;
                     }
                 }
             }
