@@ -113,6 +113,20 @@ function manageRepairs(ctx: AIContext): AIAction | null {
     return null;
 }
 
+/**
+ * Low power shuts down every building that draws power, so keeping the base powered outranks
+ * the personality-specific plans. Builds a Power Plant whenever planned consumption outgrows
+ * production and one isn't already going up.
+ */
+function managePower(ctx: AIContext): AIAction | null {
+    if (!ctx.powerDeficit) return null;
+    if (ctx.aiBuildings.some(b => b.type === BuildingType.POWER_PLANT && b.isConstructing)) return null;
+    if (ctx.aiPlayerState.credits < ENTITY_CONFIGS[BuildingType.POWER_PLANT].cost) return null;
+
+    const pos = findBuildPlacement(BuildingType.POWER_PLANT, ctx.aiPlayerId, ctx.getHqPosition(), ctx.gameState);
+    return pos ? { action: 'BUILD', buildingType: BuildingType.POWER_PLANT, placementPosition: pos, thought: 'My base is running low on power. Building a Power Plant.', playerId: ctx.aiPlayerId } : null;
+}
+
 function manageEconomy(ctx: AIContext, minerTarget: number, refineryTarget: number): AIAction | null {
     const build = (buildingType: BuildingType, thought: string): AIAction | null => {
         const pos = findBuildPlacement(buildingType, ctx.aiPlayerId, ctx.getHqPosition(), ctx.gameState);
@@ -301,6 +315,9 @@ export function getLocalAICommand(state: GameState, aiPlayerId: PlayerId, aiConf
 
     const repairAction = manageRepairs(ctx);
     if (repairAction) return repairAction;
+
+    const powerAction = managePower(ctx);
+    if (powerAction) return powerAction;
     
     // --- Personality-driven Strategy ---
     let action: AIAction | null = null;
