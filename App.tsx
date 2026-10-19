@@ -1,4 +1,4 @@
-import React, { useReducer, useState, useEffect } from 'react';
+import React, { useReducer, useState, useMemo } from 'react';
 import { INITIAL_STATE } from './state/reducer';
 import { gameReducer } from './state/reducer';
 import { MainMenu, GameOverScreen, PauseMenu, ControlsModal, SuperweaponIndicator, ControlGroupsBar } from './components/UI';
@@ -31,12 +31,16 @@ function App() {
     isDragging,
     dragStartPos,
     mousePos,
+    mousePosRef,
     setPlacingBuildingType,
     gameEventHandlers
   } = useInputHandling(state, dispatch, humanPlayerId);
 
-  useGameLoop(state, dispatch, mousePos, mainRef, viewportSize, isMouseOverSidebar);
+  useGameLoop(state, dispatch, mousePosRef, mainRef, viewportSize, isMouseOverSidebar);
   useAI(state, dispatch);
+
+  // Clustering is O(n²); only recompute when entities actually change, not on every re-render.
+  const renderableItems = useMemo(() => clusterEntities(state.entities, TILE_SIZE * 0.8), [state.entities]);
 
   const humanPlayerState = state.players[humanPlayerId];
   const selectedEntity = state.selectedIds.length === 1 ? state.entities[state.selectedIds[0]] as GameEntity : null;
@@ -51,7 +55,6 @@ function App() {
   }
   
   const playerIds = Object.keys(state.players);
-  const renderableItems = clusterEntities(state.entities, TILE_SIZE * 0.8);
 
   const GameUI = (
       <div className="flex h-screen w-screen bg-black font-mono overflow-hidden">

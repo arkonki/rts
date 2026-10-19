@@ -35,7 +35,22 @@ export const INITIAL_STATE: GameState = {
   nextEntityId: 1,
 };
 
-const makeEntityId = (playerId: PlayerId, type: UnitType | BuildingType, counter: number) =>
+/** Immutable update of one player's stats; returns the same object when the player has no stats. */
+function withStats(all: Record<PlayerId, PlayerStats>, playerId: PlayerId, update: (stats: PlayerStats) => PlayerStats): Record<PlayerId, PlayerStats> {
+    const stats = all[playerId];
+    return stats ? { ...all, [playerId]: update(stats) } : all;
+}
+
+/** Shallow field comparison; cheap stand-in for JSON.stringify equality on flat entity/player objects. */
+function shallowChanged<T extends object>(a: T, b: T): boolean {
+    const ra = a as Record<string, unknown>;
+    const rb = b as Record<string, unknown>;
+    for (const key in ra) if (ra[key] !== rb[key]) return true;
+    for (const key in rb) if (ra[key] !== rb[key]) return true;
+    return false;
+}
+
+const makeEntityId =(playerId: PlayerId, type: UnitType | BuildingType, counter: number) =>
     `${playerId}_${type.toLowerCase()}_${counter}`;
 
 // --- Game Tick Helper Functions ---
@@ -44,7 +59,7 @@ type SoundDispatcher = (sound: SoundEffect, volume?: number) => void;
 
 function updateBuildingConstruction(state: GameState, now: number, dispatchSound: SoundDispatcher): GameState {
     const updatedEntities = { ...state.entities };
-    const updatedGameStats = JSON.parse(JSON.stringify(state.gameStats));
+    let updatedGameStats = state.gameStats;
     let nextEntityId = state.nextEntityId;
     let changed = false;
 
@@ -60,10 +75,10 @@ function updateBuildingConstruction(state: GameState, now: number, dispatchSound
                 changed = true;
                 
                 // STATS UPDATE
-                const stats = updatedGameStats[building.playerId];
-                if (stats) {
-                    stats.buildingsConstructed[building.type] = (stats.buildingsConstructed[building.type] || 0) + 1;
-                }
+                updatedGameStats = withStats(updatedGameStats, building.playerId, stats => ({
+                    ...stats,
+                    buildingsConstructed: { ...stats.buildingsConstructed, [building.type]: (stats.buildingsConstructed[building.type] || 0) + 1 },
+                }));
                 
                 if (building.playerId === 'PLAYER_1') {
                     dispatchSound('construction_complete');
@@ -91,7 +106,7 @@ function updateBuildingConstruction(state: GameState, now: number, dispatchSound
 
 function updateBuildingProduction(state: GameState, now: number, dispatchSound: SoundDispatcher): GameState {
     const updatedEntities = { ...state.entities };
-    const updatedGameStats = JSON.parse(JSON.stringify(state.gameStats));
+    let updatedGameStats = state.gameStats;
     let nextEntityId = state.nextEntityId;
     let changed = false;
 
@@ -106,10 +121,10 @@ function updateBuildingProduction(state: GameState, now: number, dispatchSound: 
                 if (building.playerId === 'PLAYER_1') dispatchSound('unit_ready');
                 
                 // STATS UPDATE
-                const stats = updatedGameStats[building.playerId];
-                if(stats) {
-                    stats.unitsBuilt[itemType] = (stats.unitsBuilt[itemType] || 0) + 1;
-                }
+                updatedGameStats = withStats(updatedGameStats, building.playerId, stats => ({
+                    ...stats,
+                    unitsBuilt: { ...stats.unitsBuilt, [itemType]: (stats.unitsBuilt[itemType] || 0) + 1 },
+                }));
 
                 let spawnPos = { x: building.position.x, y: building.position.y + building.size / 2 + 15 };
                 if (building.type === BuildingType.NAVAL_YARD) {
@@ -158,7 +173,7 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
     let newResourcePatches = { ...state.resourcePatches };
     let newPlayers = { ...state.players };
     let newVisualEffects = [...state.visualEffects];
-    let newGameStats = JSON.parse(JSON.stringify(state.gameStats));
+    let newGameStats = state.gameStats;
     let somethingChanged = false;
 
     // --- Repair Bay Logic ---
@@ -306,10 +321,10 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
                                 const targetPlayerId = target.playerId;
                                 if (attackerPlayerId in newGameStats && targetPlayerId in newGameStats) {
                                     if ('status' in target) { // It's a unit
-                                        newGameStats[targetPlayerId].unitsLost += 1;
-                                        newGameStats[attackerPlayerId].enemiesKilled += 1;
+                                        newGameStats = withStats(newGameStats, targetPlayerId, s => ({ ...s, unitsLost: s.unitsLost + 1 }));
+                                        newGameStats = withStats(newGameStats, attackerPlayerId, s => ({ ...s, enemiesKilled: s.enemiesKilled + 1 }));
                                     } else if ('isPowered' in target) { // It's a building
-                                        newGameStats[attackerPlayerId].enemiesKilled += 1; // Count destroyed buildings as kills
+                                        newGameStats = withStats(newGameStats, attackerPlayerId, s => ({ ...s, enemiesKilled: s.enemiesKilled + 1 })); // Count destroyed buildings as kills
                                     }
                                 }
                                 // --- END STATS UPDATE ---
@@ -338,7 +353,9 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
             const dy = nextPos.y - currentUnit.position.y;
             const dist = Math.hypot(dx, dy);
             if (dist < TILE_SIZE / 2) {
-                currentUnit.path.shift();
+                // Copy instead of shift(): the array is shared with the stored entity, and the
+                // changed-detection below relies on the stored entity not being mutated in place.
+                currentUnit.path = currentUnit.path.slice(1);
                 if (currentUnit.path.length === 0) { // Path is complete, determine next state
                     currentUnit.targetPosition = undefined;
                     
@@ -353,9 +370,7 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
                         newPlayers[currentUnit.playerId] = { ...player, credits: player.credits + cargo };
                         
                         // --- STATS UPDATE ---
-                        if (currentUnit.playerId in newGameStats) {
-                            newGameStats[currentUnit.playerId].creditsEarned += cargo;
-                        }
+                        newGameStats = withStats(newGameStats, currentUnit.playerId, s => ({ ...s, creditsEarned: s.creditsEarned + cargo }));
                         // --- END STATS UPDATE ---
                         
                         currentUnit.cargoAmount = 0;
@@ -381,7 +396,7 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
         }
         
         // If the unit has changed, update it in the entities map
-        if (JSON.stringify(unit) !== JSON.stringify(currentUnit)) {
+        if (shallowChanged(unit, currentUnit)) {
             newEntities[unit.id] = currentUnit;
             somethingChanged = true;
         }
@@ -419,7 +434,9 @@ function updatePlayerPowerAndSuperweapons(state: GameState, now: number, dispatc
         });
 
         const player = newPlayers[playerId];
-        let newPlayer = { ...player, power };
+        // Keep the existing power object when the totals are unchanged so shallowChanged() below stays false.
+        const powerUnchanged = power.produced === player.power.produced && power.consumed === player.power.consumed;
+        let newPlayer = { ...player, power: powerUnchanged ? player.power : power };
 
         // Low power shuts down every finished building that draws power. The HQ and
         // buildings that draw none (Power Plants) always stay online so a player can recover.
@@ -456,7 +473,7 @@ function updatePlayerPowerAndSuperweapons(state: GameState, now: number, dispatc
             newPlayer.superweapon = null; // It was destroyed
         }
         
-        if (JSON.stringify(newPlayer) !== JSON.stringify(player)) {
+        if (shallowChanged(newPlayer, player)) {
             newPlayers[playerId] = newPlayer;
             playersChanged = true;
         }
@@ -467,29 +484,38 @@ function updatePlayerPowerAndSuperweapons(state: GameState, now: number, dispatc
 }
 
 function updateFogOfWar(state: GameState): GameState {
-    const newFogOfWar: FogState[][] = state.fogOfWar.map(row => row.map(cell => cell === FogState.VISIBLE ? FogState.EXPLORED : cell));
-    let fogChanged = false;
-    const playerEntities = Object.values(state.entities).filter(e => e.playerId === 'PLAYER_1');
-    
-    playerEntities.forEach(entity => {
-        const config = ENTITY_CONFIGS[entity.type];
-        if (!config.visionRange) return;
+    // 1. Work out which tiles the human player currently sees.
+    const visible = new Uint8Array(MAP_WIDTH_TILES * MAP_HEIGHT_TILES);
+    Object.values(state.entities).forEach(entity => {
+        if (entity.playerId !== 'PLAYER_1') return;
+        const visionRange = ENTITY_CONFIGS[entity.type].visionRange;
+        if (!visionRange) return;
         const centerTileX = Math.floor(entity.position.x / TILE_SIZE);
         const centerTileY = Math.floor(entity.position.y / TILE_SIZE);
-        for (let y = centerTileY - config.visionRange; y <= centerTileY + config.visionRange; y++) {
-            for (let x = centerTileX - config.visionRange; x <= centerTileX + config.visionRange; x++) {
-                if (x >= 0 && x < MAP_WIDTH_TILES && y >= 0 && y < MAP_HEIGHT_TILES) {
-                    if (Math.hypot(x - centerTileX, y - centerTileY) <= config.visionRange) {
-                        if (newFogOfWar[y][x] !== FogState.VISIBLE) {
-                            newFogOfWar[y][x] = FogState.VISIBLE;
-                            fogChanged = true;
-                        }
-                    }
+        for (let y = Math.max(0, centerTileY - visionRange); y <= Math.min(MAP_HEIGHT_TILES - 1, centerTileY + visionRange); y++) {
+            for (let x = Math.max(0, centerTileX - visionRange); x <= Math.min(MAP_WIDTH_TILES - 1, centerTileX + visionRange); x++) {
+                if (Math.hypot(x - centerTileX, y - centerTileY) <= visionRange) {
+                    visible[y * MAP_WIDTH_TILES + x] = 1;
                 }
             }
         }
     });
-    return fogChanged ? { ...state, fogOfWar: newFogOfWar } : state;
+
+    // 2. Diff against the current fog. Only allocate a new grid (and so only trigger
+    //    canvas redraws downstream) when at least one tile actually changes state.
+    let newFogOfWar: FogState[][] | null = null;
+    for (let y = 0; y < state.fogOfWar.length; y++) {
+        const row = state.fogOfWar[y];
+        for (let x = 0; x < row.length; x++) {
+            const current = row[x];
+            const next = visible[y * MAP_WIDTH_TILES + x] ? FogState.VISIBLE : (current === FogState.VISIBLE ? FogState.EXPLORED : current);
+            if (next !== current) {
+                if (!newFogOfWar) newFogOfWar = state.fogOfWar.map(r => r.slice());
+                newFogOfWar[y][x] = next;
+            }
+        }
+    }
+    return newFogOfWar ? { ...state, fogOfWar: newFogOfWar } : state;
 }
 
 function updateVisualEffects(effects: VisualEffect[], now: number): VisualEffect[] {

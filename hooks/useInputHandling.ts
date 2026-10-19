@@ -7,13 +7,26 @@ import { Renderable } from '../utils/clustering';
 export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>, humanPlayerId: string) {
   const [placingBuildingType, setPlacingBuildingType] = useState<BuildingType | null>(null);
   const [isAttackMovePending, setAttackMovePending] = useState(false);
+  // Rendered mouse position (state) is only kept up to date while something draws at the cursor
+  // (building ghost, selection box). The ref always has the latest position without re-rendering,
+  // which is what edge scrolling reads.
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const mousePosRef = useRef<Position>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartPos, setDragStartPos] = useState<Position | null>(null);
   const [lastKeyPress, setLastKeyPress] = useState({ key: '', time: 0 });
 
   const mainRef = useRef<HTMLDivElement>(null);
   const viewportSize = useRef({ width: 0, height: 0 });
+
+  // Latest props for callbacks that must keep a stable identity (so memoized entities don't re-render).
+  const latest = useRef({ state, dispatch, humanPlayerId });
+  latest.current = { state, dispatch, humanPlayerId };
+
+  const isCursorTracked = placingBuildingType !== null || isDragging;
+  useEffect(() => {
+    if (isCursorTracked) setMousePos(mousePosRef.current);
+  }, [isCursorTracked]);
 
   useEffect(() => {
     const updateViewportSize = () => {
@@ -74,7 +87,8 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  const handleEntityClick = (e: React.MouseEvent, item: Renderable) => {
+  const handleEntityClick = useCallback((e: React.MouseEvent, item: Renderable) => {
+      const { state, dispatch, humanPlayerId } = latest.current;
       e.stopPropagation();
       const clickedIsEnemy = item.playerId !== humanPlayerId;
 
@@ -92,7 +106,7 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
               : idsToSelect;
           dispatch({ type: 'SELECT', payload: newSelection });
       }
-  };
+  }, []);
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     // This handler is now for the background element, so any click here is a ground click.
@@ -197,7 +211,9 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
       if (mainRef.current) {
         const rect = mainRef.current.getBoundingClientRect();
-        setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+        const pos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        mousePosRef.current = pos;
+        if (isCursorTracked) setMousePos(pos);
     }
   };
 
@@ -209,6 +225,7 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>
       isDragging,
       dragStartPos,
       mousePos,
+      mousePosRef,
       setPlacingBuildingType,
       gameEventHandlers: {
           handleMouseDown,

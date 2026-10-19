@@ -6,7 +6,7 @@ import { GAME_LOOP_INTERVAL, MAP_HEIGHT, MAP_WIDTH } from '../constants';
 export function useGameLoop(
   state: GameState,
   dispatch: React.Dispatch<any>,
-  mousePos: Position,
+  mousePosRef: React.MutableRefObject<Position>,
   mainRef: React.RefObject<HTMLDivElement>,
   viewportSize: React.MutableRefObject<{ width: number; height: number; }>,
   isMouseOverSidebar: boolean
@@ -25,8 +25,10 @@ export function useGameLoop(
   useEffect(() => {
     // Viewport scroll interval
     if (state.gameStatus !== 'PLAYING' || isMouseOverSidebar) return;
-    
+
     const scrollInterval = setInterval(() => {
+      // Read the cursor from a ref so mouse movement doesn't tear down and recreate this interval.
+      const mousePos = mousePosRef.current;
       const SCROLL_SPEED = 15;
       const EDGE_MARGIN = 40;
       let newViewport = { ...state.viewport };
@@ -45,5 +47,5 @@ export function useGameLoop(
     }, GAME_LOOP_INTERVAL);
 
     return () => clearInterval(scrollInterval);
-  }, [state.gameStatus, state.viewport, mousePos, dispatch, mainRef, viewportSize, isMouseOverSidebar]);
+  }, [state.gameStatus, state.viewport, mousePosRef, dispatch, mainRef, viewportSize, isMouseOverSidebar]);
 }
