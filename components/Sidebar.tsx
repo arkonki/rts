@@ -42,7 +42,8 @@ const ProductionButton = ({ itemType, buildingId, dispatch, playerState, playerE
     const config = ENTITY_CONFIGS[itemType];
     
     const requirements = Array.isArray(config.requires) ? config.requires : (config.requires ? [config.requires] : []);
-    const playerBuildingTypes = playerEntities.filter(e => 'isPowered' in e).map(e => e.type);
+    // Only finished buildings count, matching the reducer's requirement check.
+    const playerBuildingTypes = playerEntities.filter(e => 'isPowered' in e && !(e as Building).isConstructing).map(e => e.type);
     
     const canAfford = playerState.credits >= config.cost;
     const requirementsMet = requirements.every(req => playerBuildingTypes.includes(req));
@@ -83,7 +84,8 @@ const BuildButton = ({ itemType, setPlacingBuildingType, playerState, playerEnti
     const config = ENTITY_CONFIGS[itemType];
     
     const requirements = Array.isArray(config.requires) ? config.requires : (config.requires ? [config.requires] : []);
-    const playerBuildingTypes = playerEntities.filter(e => 'isPowered' in e).map(e => e.type);
+    // Only finished buildings count, matching the reducer's requirement check.
+    const playerBuildingTypes = playerEntities.filter(e => 'isPowered' in e && !(e as Building).isConstructing).map(e => e.type);
 
     const canAfford = playerState.credits >= config.cost;
     const requirementsMet = requirements.every(req => playerBuildingTypes.includes(req));

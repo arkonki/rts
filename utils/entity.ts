@@ -2,6 +2,17 @@ import { Unit, GameEntity, FogState, UnitDomain } from '../types';
 import { ENTITY_CONFIGS, TILE_SIZE, HUMAN_PLAYER_ID } from '../constants';
 import { SpatialGrid } from './spatialGrid';
 
+/** Buildings are implicitly ground-domain targets. */
+export function getTargetDomain(entity: GameEntity): UnitDomain {
+    return 'domain' in entity ? entity.domain : UnitDomain.GROUND;
+}
+
+/** Whether a unit's weapons can hit the given target (enemy ownership is not checked). */
+export function canUnitAttack(unit: Unit, target: GameEntity): boolean {
+    const canAttackDomains = ENTITY_CONFIGS[unit.type].canAttack;
+    return !!canAttackDomains && canAttackDomains.includes(getTargetDomain(target));
+}
+
 export function findNearestEnemy(unit: Unit, allEntitiesGrid: SpatialGrid, fogOfWar: FogState[][]): GameEntity | null {
     let nearestEnemy: GameEntity | null = null;
     let minDistance = Infinity;
@@ -21,15 +32,7 @@ export function findNearestEnemy(unit: Unit, allEntitiesGrid: SpatialGrid, fogOf
             // Fog of war only tracks the human player's vision, so it only limits the human's units.
             if (unit.playerId === HUMAN_PLAYER_ID && fogOfWar[tileY]?.[tileX] !== FogState.VISIBLE) continue;
 
-            // Check if attacker can attack target's domain
-            let targetDomain: UnitDomain | undefined;
-            if ('domain' in entity) {
-                targetDomain = entity.domain;
-            } else { // Buildings are implicitly ground domain
-                targetDomain = UnitDomain.GROUND;
-            }
-            
-            if (!canAttackDomains.includes(targetDomain)) {
+            if (!canAttackDomains.includes(getTargetDomain(entity))) {
                 continue;
             }
 

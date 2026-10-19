@@ -133,3 +133,11 @@ Larger ideas:
 5. **Tooling:** strict TS, ESLint, Vitest with tests for pathfinding, production, win conditions and AI, GitHub Actions, and cleaning up `index.html` (bundled Tailwind, drop `importmap`).
 6. **Decide the fate of the Gemini AI** (delete, or finish it behind a server proxy).
 7. **Gameplay depth:** movement collision, armour types, better AI tactics, QoL controls from section 6.
+
+---
+
+## 8. Status
+
+Done so far: 1.1 (power now disables power-drawing buildings; HQ and Power Plants always stay online), 1.2, 1.3, 1.4, 1.5, 1.8 (shared `utils/placement.ts` validator, producer/requirement checks on queueing, `canAttack` checks on attack orders), 1.10 (extension typo only; assets are still hot-linked), and the AI-action state mutations from 1.6. Not yet verified at runtime: no Node toolchain was available when these changes were made.
+
+Behaviour changes to be aware of: players now start in low power (HQ draws 10, nothing produces) until a Power Plant is built, buildings must be placed within 15 tiles of an existing building (`BASE_BUILD_RADIUS_TILES`), and the whole footprint of a building must sit on ground.

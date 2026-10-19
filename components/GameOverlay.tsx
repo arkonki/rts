@@ -1,6 +1,7 @@
 import React from 'react';
 import { BuildingType, Position, TerrainType, GameEntity } from '../types';
-import { ENTITY_CONFIGS, TILE_SIZE, MAP_WIDTH, MAP_HEIGHT, MAP_HEIGHT_TILES, MAP_WIDTH_TILES } from '../constants';
+import { ENTITY_CONFIGS, MAP_WIDTH, MAP_HEIGHT, HUMAN_PLAYER_ID } from '../constants';
+import { getPlacementError } from '../utils/placement';
 import { EntityIcon } from './icons';
 
 interface GhostBuildingProps {
@@ -12,21 +13,6 @@ interface GhostBuildingProps {
     entities: Record<string, GameEntity>;
     playerCredits: number;
 }
-
-const isCoastalTile = (x: number, y: number, terrain: TerrainType[][]): boolean => {
-    if (x < 0 || x >= MAP_WIDTH_TILES || y < 0 || y >= MAP_HEIGHT_TILES) return false;
-    if (terrain[y]?.[x] !== TerrainType.GROUND) return false;
-    for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const neighborTerrain = terrain[y + dy]?.[x + dx];
-            if (neighborTerrain === TerrainType.SHALLOW_WATER || neighborTerrain === TerrainType.DEEP_WATER) {
-                return true;
-            }
-        }
-    }
-    return false;
-};
 
 
 export const GhostBuilding = ({ placingBuildingType, mousePos, viewport, mainRef, terrain, entities, playerCredits }: GhostBuildingProps) => {
@@ -40,22 +26,11 @@ export const GhostBuilding = ({ placingBuildingType, mousePos, viewport, mainRef
     };
     const mapCoords = getMapCoords(mousePos.x + mainRef.current!.getBoundingClientRect().left, mousePos.y + mainRef.current!.getBoundingClientRect().top);
 
-    const tileX = Math.floor(mapCoords.x / TILE_SIZE); 
-    const tileY = Math.floor(mapCoords.y / TILE_SIZE);
-
-    let isPlacementValid = true;
-    if(terrain.length > 0) {
-        if (config.placementRule === 'COASTAL') {
-            isPlacementValid = isCoastalTile(tileX, tileY, terrain);
-        } else {
-            isPlacementValid = terrain[tileY]?.[tileX] === TerrainType.GROUND;
-        }
-    }
-    
-    const isOccupied = Object.values(entities).some(e => Math.hypot(e.position.x - mapCoords.x, e.position.y - mapCoords.y) < (e.size / 2 + config.size / 2));
+    // Same rules the reducer enforces, so the ghost colour always matches what will happen on click.
+    const isPlacementValid = terrain.length === 0 || getPlacementError(placingBuildingType, mapCoords, terrain, entities, HUMAN_PLAYER_ID) === null;
     const canAfford = playerCredits >= config.cost;
-    
-    const borderColor = !canAfford ? 'border-yellow-500' : isOccupied || !isPlacementValid ? 'border-red-500' : 'border-green-500';
+
+    const borderColor = !canAfford ? 'border-yellow-500' : !isPlacementValid ? 'border-red-500' : 'border-green-500';
     
     return (
         <div className="absolute pointer-events-none opacity-50 z-10" style={{ left: mapCoords.x, top: mapCoords.y, width: config.size, height: config.size, transform: 'translate(-50%, -50%)' }}> 

@@ -12,6 +12,9 @@ export const GAME_LOOP_INTERVAL = 100; // ms
 
 export const HUMAN_PLAYER_ID = 'PLAYER_1';
 
+// New buildings must be placed within this many tiles of an existing building of the same player.
+export const BASE_BUILD_RADIUS_TILES = 15;
+
 export const ATTACK_VISUAL_DURATION = 300; // ms
 export const EXPLOSION_DURATION = 400; // ms
 export const DAMAGE_TEXT_DURATION = 1000; // ms

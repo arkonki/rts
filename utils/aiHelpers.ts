@@ -1,54 +1,30 @@
-import { BuildingType, GameEntity, Position, TerrainType } from '../types';
-import { ENTITY_CONFIGS, MAP_HEIGHT, MAP_WIDTH, TILE_SIZE, MAP_HEIGHT_TILES, MAP_WIDTH_TILES } from '../constants';
+import { BuildingType, GameState, PlayerId, Position } from '../types';
+import { ENTITY_CONFIGS, MAP_HEIGHT, MAP_WIDTH, TILE_SIZE } from '../constants';
+import { getPlacementError } from './placement';
 
-function isCoastalTile(x: number, y: number, terrain: TerrainType[][]): boolean {
-    if (x < 0 || x >= MAP_WIDTH_TILES || y < 0 || y >= MAP_HEIGHT_TILES) return false;
-    if (terrain[y]?.[x] !== TerrainType.GROUND) return false;
-    for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const ny = y + dy;
-            const nx = x + dx;
-            const neighborTerrain = terrain[ny]?.[nx];
-            if (neighborTerrain === TerrainType.SHALLOW_WATER || neighborTerrain === TerrainType.DEEP_WATER) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
+/** Finds a valid tile position for a new AI building near the HQ. Returns tile coordinates, or null. */
+export function findBuildPlacement(buildingType: BuildingType, playerId: PlayerId, hqPosition: Position, state: GameState): Position | null {
+    const config = ENTITY_CONFIGS[buildingType];
+    const ownEntities = Object.values(state.entities).filter(e => e.playerId === playerId);
 
-export function findBuildPlacement(buildingType: BuildingType, allAiEntities: GameEntity[], hqPosition: Position, terrain: TerrainType[][]): Position | null {
-    const isCoastal = ENTITY_CONFIGS[buildingType].placementRule === 'COASTAL';
-
-    for (let i = 0; i < 100; i++) { // Increase attempts
+    for (let i = 0; i < 100; i++) {
         const angle = Math.random() * Math.PI * 2;
         const distance = TILE_SIZE * 4 + Math.random() * TILE_SIZE * 10;
-        const pos = {
-            x: hqPosition.x + Math.cos(angle) * distance,
-            y: hqPosition.y + Math.sin(angle) * distance,
-        };
+        const x = Math.max(TILE_SIZE * 2, Math.min(hqPosition.x + Math.cos(angle) * distance, MAP_WIDTH - TILE_SIZE * 4));
+        const y = Math.max(TILE_SIZE * 2, Math.min(hqPosition.y + Math.sin(angle) * distance, MAP_HEIGHT - TILE_SIZE * 4));
 
-        pos.x = Math.max(TILE_SIZE * 2, Math.min(pos.x, MAP_WIDTH - TILE_SIZE * 4));
-        pos.y = Math.max(TILE_SIZE * 2, Math.min(pos.y, MAP_HEIGHT - TILE_SIZE * 4));
-        
-        const tileX = Math.floor(pos.x / TILE_SIZE);
-        const tileY = Math.floor(pos.y / TILE_SIZE);
+        const tileX = Math.floor(x / TILE_SIZE);
+        const tileY = Math.floor(y / TILE_SIZE);
+        // The reducer places AI buildings at the tile centre, so validate that exact position.
+        const centre = { x: tileX * TILE_SIZE + TILE_SIZE / 2, y: tileY * TILE_SIZE + TILE_SIZE / 2 };
 
-        if (isCoastal) {
-            if (!isCoastalTile(tileX, tileY, terrain)) continue;
-        } else {
-            if (terrain[tileY]?.[tileX] !== TerrainType.GROUND) continue;
-        }
+        if (getPlacementError(buildingType, centre, state.terrain, state.entities, playerId) !== null) continue;
 
-        const isOccupied = allAiEntities.some(e => {
-            const dx = e.position.x - pos.x;
-            const dy = e.position.y - pos.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            return dist < (e.size / 2 + (ENTITY_CONFIGS[buildingType].size / 2) + TILE_SIZE); // Add buffer
-        });
-
-        if (!isOccupied) return { x: tileX, y: tileY }; // Return tile coordinates
+        // Keep a one-tile gap to the AI's own buildings so units can path between them.
+        const tooClose = ownEntities.some(e =>
+            Math.hypot(e.position.x - centre.x, e.position.y - centre.y) < (e.size / 2 + config.size / 2 + TILE_SIZE)
+        );
+        if (!tooClose) return { x: tileX, y: tileY };
     }
-    return null; // Return null if no position found
+    return null;
 }

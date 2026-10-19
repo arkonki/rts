@@ -1,6 +1,20 @@
 
-import { GameEntity, BuildingType, UnitType, PlayerState, Building } from '../types';
+import { GameEntity, BuildingType, UnitType, PlayerState, Building, PlayerId, EntityConfig } from '../types';
 import { ENTITY_CONFIGS } from '../constants';
+
+export function getRequirements(config: EntityConfig): BuildingType[] {
+    return config.requires ? (Array.isArray(config.requires) ? config.requires : [config.requires]) : [];
+}
+
+/** True if the player owns a finished (not under construction) building of the given type. */
+export function hasCompletedBuilding(entities: Record<string, GameEntity>, playerId: PlayerId, type: BuildingType): boolean {
+    return Object.values(entities).some(e => e.playerId === playerId && e.type === type && !('isConstructing' in e && e.isConstructing));
+}
+
+/** True if the player owns every finished building the config requires. */
+export function meetsRequirements(config: EntityConfig, entities: Record<string, GameEntity>, playerId: PlayerId): boolean {
+    return getRequirements(config).every(req => hasCompletedBuilding(entities, playerId, req));
+}
 
 /**
  * Determines which units and buildings a player can produce based on their current buildings.
@@ -12,7 +26,7 @@ export function getProducibleItems(playerState: PlayerState, playerEntities: Gam
     const playerBuildingTypes = playerEntities
         .filter(e => 'isPowered' in e && !(e as Building).isConstructing)
         .map(e => e.type);
-        
+
     const hasBuilding = (type: BuildingType) => playerBuildingTypes.includes(type);
 
     const producibleUnits: UnitType[] = [];
@@ -20,12 +34,12 @@ export function getProducibleItems(playerState: PlayerState, playerEntities: Gam
 
     Object.entries(ENTITY_CONFIGS).forEach(([itemStr, config]) => {
         const itemType = itemStr as UnitType | BuildingType;
-        
+
         // Items with no cost aren't directly produced from a menu (e.g., HQ at start)
         if(config.cost === 0) return;
 
         // Check if all prerequisite buildings have been constructed.
-        const requirements = config.requires ? (Array.isArray(config.requires) ? config.requires : [config.requires]) : [];
+        const requirements = getRequirements(config);
         const requirementsMet = requirements.every(req => hasBuilding(req));
 
         if (!requirementsMet && requirements.length > 0) {
@@ -37,13 +51,13 @@ export function getProducibleItems(playerState: PlayerState, playerEntities: Gam
             producibleUnits.push(itemType as UnitType);
         } else if (Object.values(BuildingType).includes(itemType as BuildingType)) {
             const isSuperweapon = itemType === BuildingType.CHRONO_SPHERE || itemType === BuildingType.NUCLEAR_MISSILE_SILO;
-            
+
             // Allow building if it's NOT a superweapon, OR if it IS a superweapon and the player DOESN'T have it yet.
             if (!isSuperweapon || (isSuperweapon && !hasBuilding(itemType as BuildingType))) {
                 producibleBuildings.push(itemType as BuildingType);
             }
         }
     });
-    
+
     return { producibleUnits, producibleBuildings };
 }

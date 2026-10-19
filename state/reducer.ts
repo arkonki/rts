@@ -2,7 +2,9 @@ import { GameState, GameStatus, BuildingType, Building, Unit, UnitType, FogState
 import { ENTITY_CONFIGS, GAME_LOOP_INTERVAL, MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, MAP_WIDTH_TILES, MAP_HEIGHT_TILES, DIFFICULTY_SETTINGS, ATTACK_VISUAL_DURATION, EXPLOSION_DURATION, DAMAGE_TEXT_DURATION, REPAIR_TEXT_DURATION, STARTING_POSITIONS, CHRONO_VORTEX_DURATION, NUKE_IMPACT_DURATION } from '../constants';
 import { generateMap } from '../utils/map';
 import { findPath } from '../utils/pathfinding';
-import { findNearestEnemy } from '../utils/entity';
+import { findNearestEnemy, canUnitAttack } from '../utils/entity';
+import { getPlacementError } from '../utils/placement';
+import { meetsRequirements } from '../utils/logic';
 import { soundService, unitAttackSounds, SoundEffect } from '../services/soundService';
 import { SpatialGrid } from '../utils/spatialGrid';
 
@@ -393,6 +395,7 @@ function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatch
 
 function updatePlayerPowerAndSuperweapons(state: GameState, now: number, dispatchSound: SoundDispatcher): GameState {
     const newPlayers = { ...state.players };
+    let newEntities = state.entities;
     let playersChanged = false;
 
     Object.keys(newPlayers).forEach(playerId => {
@@ -417,6 +420,21 @@ function updatePlayerPowerAndSuperweapons(state: GameState, now: number, dispatc
 
         const player = newPlayers[playerId];
         let newPlayer = { ...player, power };
+
+        // Low power shuts down every finished building that draws power. The HQ and
+        // buildings that draw none (Power Plants) always stay online so a player can recover.
+        const lowPower = power.consumed > power.produced;
+        Object.values(state.entities).forEach(entity => {
+            if (entity.playerId !== playerId || !('isPowered' in entity)) return;
+            const building = entity as Building;
+            if (building.isConstructing) return;
+            const drawsPower = (ENTITY_CONFIGS[building.type].powerConsumed || 0) > 0;
+            const shouldBePowered = !lowPower || building.type === BuildingType.HQ || !drawsPower;
+            if (building.isPowered !== shouldBePowered) {
+                if (newEntities === state.entities) newEntities = { ...state.entities };
+                newEntities[building.id] = { ...building, isPowered: shouldBePowered };
+            }
+        });
 
         // Superweapon state logic
         const currentSuperweapon = player.superweapon;
@@ -444,7 +462,8 @@ function updatePlayerPowerAndSuperweapons(state: GameState, now: number, dispatc
         }
     });
 
-    return playersChanged ? { ...state, players: newPlayers } : state;
+    if (!playersChanged && newEntities === state.entities) return state;
+    return { ...state, players: newPlayers, entities: newEntities };
 }
 
 function updateFogOfWar(state: GameState): GameState {
@@ -734,6 +753,7 @@ export function gameReducer(state: GameState, action: any): GameState {
             if (entity && 'status' in entity) {
                 const unit = { ...entity } as Unit;
                 if (unit.type === UnitType.CHRONO_MINER || unit.type === UnitType.ENGINEER) return;
+                if (unit.playerId === targetEntity.playerId || !canUnitAttack(unit, targetEntity)) return;
                 unit.status = 'ATTACKING';
                 unit.targetId = action.payload;
                 unit.targetPosition = undefined;
@@ -752,12 +772,10 @@ export function gameReducer(state: GameState, action: any): GameState {
         const playerState = state.players[producer.playerId];
         const config = ENTITY_CONFIGS[itemType as UnitType | BuildingType];
 
-        const requirements = Array.isArray(config.requires) ? config.requires : (config.requires ? [config.requires] : []);
-        const requirementsMet = requirements.every(req => 
-          Object.values(state.entities).some(e => e.playerId === playerState.id && e.type === req && !('isConstructing' in e && e.isConstructing))
-        );
+        const requirementsMet = meetsRequirements(config, state.entities, playerState.id);
+        const isRightProducer = config.producedBy === producer.type;
 
-        if (playerState.credits < config.cost || !requirementsMet) {
+        if (playerState.credits < config.cost || !requirementsMet || !isRightProducer) {
             if (producer.playerId === 'PLAYER_1') {
                 soundService.play('insufficient_funds');
             }
@@ -785,45 +803,12 @@ export function gameReducer(state: GameState, action: any): GameState {
             return { ...state, lastMessage: `Not enough credits for a ${config.name}.` };
         }
 
-        const tileX = Math.floor(position.x / TILE_SIZE);
-        const tileY = Math.floor(position.y / TILE_SIZE);
-        
-        if (config.placementRule === 'COASTAL') {
-            let isCoastal = false;
-            if(state.terrain[tileY]?.[tileX] === TerrainType.GROUND) {
-                for (let dy = -1; dy <= 1; dy++) {
-                    for (let dx = -1; dx <= 1; dx++) {
-                        if (dx === 0 && dy === 0) continue;
-                        const neighborTerrain = state.terrain[tileY + dy]?.[tileX + dx];
-                        if (neighborTerrain === TerrainType.SHALLOW_WATER || neighborTerrain === TerrainType.DEEP_WATER) {
-                            isCoastal = true; break;
-                        }
-                    }
-                    if(isCoastal) break;
-                }
-            }
-            if (!isCoastal) {
-                soundService.play('insufficient_funds');
-                return { ...state, lastMessage: `${config.name} must be built on a coastline.` };
-            }
-        } else {
-            if (state.terrain[tileY]?.[tileX] !== TerrainType.GROUND) {
-                soundService.play('insufficient_funds');
-                return { ...state, lastMessage: "Cannot build on this terrain." };
-            }
+        const placementError = getPlacementError(buildingType, position, state.terrain, state.entities, humanPlayerId);
+        if (placementError) {
+            soundService.play('insufficient_funds');
+            return { ...state, lastMessage: placementError };
         }
 
-        const isOccupied = Object.values(state.entities).some(e => {
-            const dx = e.position.x - position.x;
-            const dy = e.position.y - position.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            return dist < (e.size / 2 + config.size / 2);
-        });
-        if (isOccupied) {
-            soundService.play('insufficient_funds');
-            return { ...state, lastMessage: "Cannot place building here: location is obstructed." };
-        }
-        
         soundService.play('place_building');
         const newPlayerState = { ...humanPlayerState, credits: humanPlayerState.credits - config.cost };
         const newId = makeEntityId(humanPlayerId, buildingType, state.nextEntityId);
@@ -978,12 +963,9 @@ export function gameReducer(state: GameState, action: any): GameState {
                     if (aiPlayerState.credits >= config.cost) {
                         const pixelPos = { x: placementPosition.x * TILE_SIZE + TILE_SIZE / 2, y: placementPosition.y * TILE_SIZE + TILE_SIZE / 2 };
                         
-                        const isOccupied = Object.values(newState.entities).some(e => {
-                           const dist = Math.hypot(e.position.x - pixelPos.x, e.position.y - pixelPos.y);
-                           return dist < (e.size / 2 + config.size / 2);
-                        });
+                        const placementError = getPlacementError(buildingType, pixelPos, newState.terrain, newState.entities, playerId);
 
-                        if(!isOccupied) {
+                        if(!placementError) {
                             const newAiPlayerState = { ...aiPlayerState, credits: aiPlayerState.credits - config.cost };
                             const newId = makeEntityId(playerId, buildingType, newState.nextEntityId);
                             newState.nextEntityId += 1;
@@ -993,9 +975,9 @@ export function gameReducer(state: GameState, action: any): GameState {
                                 productionQueue: [], productionProgress: 0, isConstructing: true,
                             };
                             newState.entities = { ...newState.entities, [newId]: newBuilding };
-                            newState.players[playerId] = newAiPlayerState;
+                            newState.players = { ...newState.players, [playerId]: newAiPlayerState };
                         } else {
-                             message = thought + ` (Failed to place at ${placementPosition.x}, ${placementPosition.y} - obstructed!)`;
+                             message = thought + ` (Failed to place at ${placementPosition.x}, ${placementPosition.y}: ${placementError})`;
                         }
                     }
                  }
@@ -1007,14 +989,14 @@ export function gameReducer(state: GameState, action: any): GameState {
                     const config = ENTITY_CONFIGS[unitType];
                     const producerType = config.producedBy;
                     
-                    if (producerType) {
+                    if (producerType && meetsRequirements(config, newState.entities, playerId)) {
                          const producer = Object.values(newState.entities).find(e => e.playerId === playerId && e.type === producerType && 'isPowered' in e && (e as Building).isPowered) as Building;
 
                         if(producer && aiPlayerState.credits >= config.cost && producer.productionQueue.length < 5) {
                             const newAiPlayerState = { ...aiPlayerState, credits: aiPlayerState.credits - config.cost };
                             const newProducer = { ...producer, productionQueue: [...producer.productionQueue, unitType] };
-                            newState.entities[producer.id] = newProducer;
-                            newState.players[playerId] = newAiPlayerState;
+                            newState.entities = { ...newState.entities, [producer.id]: newProducer };
+                            newState.players = { ...newState.players, [playerId]: newAiPlayerState };
                         }
                     }
                 }
@@ -1022,8 +1004,15 @@ export function gameReducer(state: GameState, action: any): GameState {
             }
             case 'ATTACK': {
                 const { attackTargetId, unitIds } = aiActionPayload;
-                if(attackTargetId && newState.entities[attackTargetId]) {
-                    const attackers = (unitIds && unitIds.length > 0 ? unitIds.map(id => newState.entities[id]).filter(Boolean) : Object.values(newState.entities).filter(e => e.playerId === playerId && 'status' in e && e.type !== UnitType.CHRONO_MINER)) as Unit[];
+                const attackTarget = attackTargetId ? newState.entities[attackTargetId] : undefined;
+                if(attackTarget && attackTarget.playerId !== playerId) {
+                    const candidates = (unitIds && unitIds.length > 0 ? unitIds.map(id => newState.entities[id]).filter(Boolean) : Object.values(newState.entities)) as GameEntity[];
+                    // Only the AI's own armed units that can actually hit this target.
+                    const attackers = candidates.filter(e =>
+                        e.playerId === playerId && 'status' in e &&
+                        e.type !== UnitType.CHRONO_MINER && e.type !== UnitType.ENGINEER &&
+                        canUnitAttack(e as Unit, attackTarget)
+                    ) as Unit[];
                     if (attackers.length > 0) {
                         const newEntities = { ...newState.entities };
                         attackers.forEach(entity => {

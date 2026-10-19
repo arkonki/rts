@@ -115,10 +115,10 @@ function manageRepairs(ctx: AIContext): AIAction | null {
 
 function manageEconomy(ctx: AIContext, minerTarget: number, refineryTarget: number): AIAction | null {
     const build = (buildingType: BuildingType, thought: string): AIAction | null => {
-        const pos = findBuildPlacement(buildingType, ctx.allAiEntities, ctx.getHqPosition(), ctx.gameState.terrain);
+        const pos = findBuildPlacement(buildingType, ctx.aiPlayerId, ctx.getHqPosition(), ctx.gameState);
         return pos ? { action: 'BUILD', buildingType, placementPosition: pos, thought, playerId: ctx.aiPlayerId } : null;
     };
-    
+
     // 1. Assign idle miners
     const idleMiners = ctx.aiMiners.filter(u => u.status === 'IDLE');
     if (idleMiners.length > 0) {
@@ -166,7 +166,7 @@ function manageSupport(ctx: AIContext): AIAction | null {
 
     // Build Repair Bay
     if (vehicleCount > 3 && !ctx.hasBuilding(BuildingType.REPAIR_BAY) && ctx.aiPlayerState.credits > ENTITY_CONFIGS[BuildingType.REPAIR_BAY].cost) {
-        const pos = findBuildPlacement(BuildingType.REPAIR_BAY, ctx.allAiEntities, ctx.getHqPosition(), ctx.gameState.terrain);
+        const pos = findBuildPlacement(BuildingType.REPAIR_BAY, ctx.aiPlayerId, ctx.getHqPosition(), ctx.gameState);
         if (pos) return { action: 'BUILD', buildingType: BuildingType.REPAIR_BAY, placementPosition: pos, thought: 'My army needs mechanical support. Building a Repair Bay.', playerId: ctx.aiPlayerId };
     }
 
@@ -183,7 +183,7 @@ function manageSupport(ctx: AIContext): AIAction | null {
 function manageMilitary(ctx: AIContext, unitComposition: Partial<Record<UnitType, number>>, armySizeTarget: number): AIAction | null {
     const combatUnits = ctx.aiUnits.filter(u => u.type !== UnitType.CHRONO_MINER && u.type !== UnitType.ENGINEER);
     const build = (buildingType: BuildingType, thought: string): AIAction | null => {
-        const pos = findBuildPlacement(buildingType, ctx.allAiEntities, ctx.getHqPosition(), ctx.gameState.terrain);
+        const pos = findBuildPlacement(buildingType, ctx.aiPlayerId, ctx.getHqPosition(), ctx.gameState);
         return pos ? { action: 'BUILD', buildingType, placementPosition: pos, thought, playerId: ctx.aiPlayerId } : null;
     };
 
@@ -191,12 +191,18 @@ function manageMilitary(ctx: AIContext, unitComposition: Partial<Record<UnitType
     if (!ctx.hasBuilding(BuildingType.BARRACKS) && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.BARRACKS].cost) {
         return build(BuildingType.BARRACKS, 'Need a Barracks to train infantry.');
     }
+    // The War Factory requires a Power Plant, and production halts without power anyway.
+    const hasPlantOrPlanned = ctx.aiBuildings.some(b => b.type === BuildingType.POWER_PLANT);
+    if (!hasPlantOrPlanned && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.POWER_PLANT].cost) {
+        return build(BuildingType.POWER_PLANT, 'Need a Power Plant to run my base.');
+    }
      if (!ctx.hasBuilding(BuildingType.WAR_FACTORY) && ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.WAR_FACTORY].cost) {
         return build(BuildingType.WAR_FACTORY, 'A War Factory is required for vehicles.');
     }
-    
+
     // 2. Ensure enough power for production buildings
-    if (ctx.powerDeficit && (ctx.getProducers(UnitType.RIFLEMAN).length > 0 || ctx.getProducers(UnitType.TANK).length > 0)) {
+    // (check completed buildings, not getProducers: unpowered producers are exactly what this fixes)
+    if (ctx.powerDeficit && (ctx.hasBuilding(BuildingType.BARRACKS) || ctx.hasBuilding(BuildingType.WAR_FACTORY))) {
          if(ctx.aiPlayerState.credits >= ENTITY_CONFIGS[BuildingType.POWER_PLANT].cost) {
              return build(BuildingType.POWER_PLANT, 'Powering up my production facilities.');
          }
