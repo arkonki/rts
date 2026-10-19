@@ -203,6 +203,7 @@ export interface GameState {
   controlGroups: Record<string, string[]>;
   gameStats: Record<PlayerId, PlayerStats>;
   gameSummary: Record<PlayerId, PlayerStats> | null;
+  nextEntityId: number; // monotonic counter used to build unique entity ids
 }
 
 export type AIActionType = 'BUILD' | 'TRAIN' | 'ATTACK' | 'IDLE' | 'LAUNCH_SUPERWEAPON' | 'GATHER' | 'REPAIR';

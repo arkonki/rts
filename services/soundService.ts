@@ -31,7 +31,7 @@ export type SoundEffect =
 // and place them in a '/public/sounds' directory (or similar) for them to be accessible.
 const soundFiles: Record<SoundEffect, string> = {
     click: '/sounds/click.wav',
-    place_building: 'https://maantoa.ee/audio/place_building.waw',
+    place_building: 'https://maantoa.ee/audio/place_building.wav',
     unit_ready: 'https://maantoa.ee/audio/unit-reporting.mp3',
     construction_complete: '/sounds/construction_complete.mp3',
     insufficient_funds: '/sounds/insufficient_funds.mp3',

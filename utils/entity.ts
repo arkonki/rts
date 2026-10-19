@@ -1,5 +1,5 @@
 import { Unit, GameEntity, FogState, UnitDomain } from '../types';
-import { ENTITY_CONFIGS, TILE_SIZE } from '../constants';
+import { ENTITY_CONFIGS, TILE_SIZE, HUMAN_PLAYER_ID } from '../constants';
 import { SpatialGrid } from './spatialGrid';
 
 export function findNearestEnemy(unit: Unit, allEntitiesGrid: SpatialGrid, fogOfWar: FogState[][]): GameEntity | null {
@@ -18,7 +18,8 @@ export function findNearestEnemy(unit: Unit, allEntitiesGrid: SpatialGrid, fogOf
         if (entity.playerId !== unit.playerId) {
             const tileX = Math.floor(entity.position.x / TILE_SIZE);
             const tileY = Math.floor(entity.position.y / TILE_SIZE);
-            if(fogOfWar[tileY]?.[tileX] !== FogState.VISIBLE) continue;
+            // Fog of war only tracks the human player's vision, so it only limits the human's units.
+            if (unit.playerId === HUMAN_PLAYER_ID && fogOfWar[tileY]?.[tileX] !== FogState.VISIBLE) continue;
 
             // Check if attacker can attack target's domain
             let targetDomain: UnitDomain | undefined;

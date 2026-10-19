@@ -10,6 +10,8 @@ export const MAP_HEIGHT = MAP_HEIGHT_TILES * TILE_SIZE;
 
 export const GAME_LOOP_INTERVAL = 100; // ms
 
+export const HUMAN_PLAYER_ID = 'PLAYER_1';
+
 export const ATTACK_VISUAL_DURATION = 300; // ms
 export const EXPLOSION_DURATION = 400; // ms
 export const DAMAGE_TEXT_DURATION = 1000; // ms

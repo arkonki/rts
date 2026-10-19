@@ -30,7 +30,11 @@ export const INITIAL_STATE: GameState = {
   controlGroups: {},
   gameStats: {},
   gameSummary: null,
+  nextEntityId: 1,
 };
+
+const makeEntityId = (playerId: PlayerId, type: UnitType | BuildingType, counter: number) =>
+    `${playerId}_${type.toLowerCase()}_${counter}`;
 
 // --- Game Tick Helper Functions ---
 
@@ -39,6 +43,7 @@ type SoundDispatcher = (sound: SoundEffect, volume?: number) => void;
 function updateBuildingConstruction(state: GameState, now: number, dispatchSound: SoundDispatcher): GameState {
     const updatedEntities = { ...state.entities };
     const updatedGameStats = JSON.parse(JSON.stringify(state.gameStats));
+    let nextEntityId = state.nextEntityId;
     let changed = false;
 
     Object.values(state.entities).forEach(entity => {
@@ -65,7 +70,7 @@ function updateBuildingConstruction(state: GameState, now: number, dispatchSound
                 if (building.type === BuildingType.REFINERY) {
                     const minerConfig = ENTITY_CONFIGS[UnitType.CHRONO_MINER];
                     const spawnPos = { x: building.position.x, y: building.position.y + building.size / 2 + 20 };
-                    const newId = `${building.playerId}_${UnitType.CHRONO_MINER.toLowerCase()}_${Date.now()}`;
+                    const newId = makeEntityId(building.playerId, UnitType.CHRONO_MINER, nextEntityId++);
                     updatedEntities[newId] = {
                         id: newId, playerId: building.playerId, type: UnitType.CHRONO_MINER,
                         hp: minerConfig.hp, maxHp: minerConfig.hp, position: spawnPos,
@@ -79,12 +84,13 @@ function updateBuildingConstruction(state: GameState, now: number, dispatchSound
         }
     });
 
-    return changed ? { ...state, entities: updatedEntities, gameStats: updatedGameStats } : state;
+    return changed ? { ...state, entities: updatedEntities, gameStats: updatedGameStats, nextEntityId } : state;
 }
 
 function updateBuildingProduction(state: GameState, now: number, dispatchSound: SoundDispatcher): GameState {
     const updatedEntities = { ...state.entities };
     const updatedGameStats = JSON.parse(JSON.stringify(state.gameStats));
+    let nextEntityId = state.nextEntityId;
     let changed = false;
 
     Object.values(state.entities).forEach(entity => {
@@ -122,7 +128,7 @@ function updateBuildingProduction(state: GameState, now: number, dispatchSound: 
                           if(foundSpawn) break;
                       }
                 }
-                const newId = `${building.playerId}_${itemType.toLowerCase()}_${Date.now()}`;
+                const newId = makeEntityId(building.playerId, itemType, nextEntityId++);
                 const rallyPath = building.rallyPoint ? findPath(spawnPos, building.rallyPoint, state.terrain, config.domain!) : null;
                 
                 updatedEntities[newId] = {
@@ -142,7 +148,7 @@ function updateBuildingProduction(state: GameState, now: number, dispatchSound: 
         }
     });
 
-    return changed ? { ...state, entities: updatedEntities, gameStats: updatedGameStats } : state;
+    return changed ? { ...state, entities: updatedEntities, gameStats: updatedGameStats, nextEntityId } : state;
 }
 
 function updateUnits(state: GameState, now: number, dispatchSound: SoundDispatcher, spatialGrid: SpatialGrid): GameState {
@@ -820,12 +826,12 @@ export function gameReducer(state: GameState, action: any): GameState {
         
         soundService.play('place_building');
         const newPlayerState = { ...humanPlayerState, credits: humanPlayerState.credits - config.cost };
-        const newId = `player_1_${buildingType.toLowerCase()}_${Date.now()}`;
+        const newId = makeEntityId(humanPlayerId, buildingType, state.nextEntityId);
         const newBuilding: Building = {
             id: newId, type: buildingType, playerId: humanPlayerId, hp: 1, maxHp: config.hp, position,
             size: config.size, isPowered: false, productionQueue: [], productionProgress: 0, isConstructing: true,
         };
-        return { ...state, players: {...state.players, [humanPlayerId]: newPlayerState }, entities: { ...state.entities, [newId]: newBuilding }, lastMessage: `Constructing ${config.name}...` };
+        return { ...state, players: {...state.players, [humanPlayerId]: newPlayerState }, entities: { ...state.entities, [newId]: newBuilding }, nextEntityId: state.nextEntityId + 1, lastMessage: `Constructing ${config.name}...` };
     }
     
     case 'ACTIVATE_CHRONO_TELEPORT':
@@ -979,7 +985,8 @@ export function gameReducer(state: GameState, action: any): GameState {
 
                         if(!isOccupied) {
                             const newAiPlayerState = { ...aiPlayerState, credits: aiPlayerState.credits - config.cost };
-                            const newId = `${playerId}_${buildingType.toLowerCase()}_${Date.now()}`;
+                            const newId = makeEntityId(playerId, buildingType, newState.nextEntityId);
+                            newState.nextEntityId += 1;
                             const newBuilding: Building = {
                                 id: newId, type: buildingType, playerId: playerId, hp: 1, maxHp: config.hp,
                                 position: pixelPos, size: config.size, isPowered: false, 
