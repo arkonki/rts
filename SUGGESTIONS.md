@@ -143,3 +143,13 @@ Done so far: 1.1 (power now disables power-drawing buildings; HQ and Power Plant
 Behaviour changes to be aware of: players now start in low power (HQ draws 10, nothing produces) until a Power Plant is built, buildings must be placed within 15 tiles of an existing building (`BASE_BUILD_RADIUS_TILES`), and the whole footprint of a building must sit on ground.
 
 Performance pass done (still unprofiled and untested at runtime): 2.1 fog is diffed and only reallocated when a tile changes, 2.2 mouse position lives in a ref unless a ghost or selection box needs it, entity click handlers are stable so `React.memo` on entities works, and `clusterEntities` is memoized, 2.3 A* now uses a binary heap, typed arrays, octile distance and fails fast on non-walkable goals, 2.4 the JSON deep clones and stringify comparisons in the tick are replaced by copy-on-write stats and shallow comparison, 2.7 the edge-scroll interval no longer restarts on mouse movement. Still open from section 2: 2.5 (minimap redraws), 2.6 (fixed-timestep loop), 2.8 (canvas rendering).
+
+Reducer purity and structure done (also untested at runtime): 1.7 (the reducer no longer plays sounds, reads `Date.now()` or calls `Math.random()`), 1.6 and the typed-actions item from section 4. `state/reducer.ts` is now a thin dispatcher over `state/commands/*` (player and AI commands) and `state/systems/*` (the per-tick simulation), with a typed `GameAction` union in `state/actions.ts`.
+
+How purity works now:
+- Sounds are queued in `state.soundEvents` and played by `hooks/useSoundEvents.ts` (deduped by monotonic id).
+- Time is `state.tick` (game time = `tick * GAME_LOOP_INTERVAL`), so attack cooldowns and effect lifetimes now pause with the game.
+- Map generation takes a seed from the `START_GAME`/`RESTART_GAME` payload (`utils/random.ts`); the seed is stored in `state.mapSeed`.
+- All generated ids, including visual effect ids that used to collide when several units hit one target in a tick, come from `state.nextId`.
+
+Still to do from section 4: entity `kind` discriminant, deduplicating the remaining `requires` normalisation, constants for magic numbers.

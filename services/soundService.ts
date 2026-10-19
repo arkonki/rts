@@ -1,31 +1,7 @@
 
-import { UnitType } from "../types";
+import { SoundEffect } from "../types";
 
-export type SoundEffect =
-  | 'click'
-  | 'place_building'
-  | 'unit_ready'
-  | 'construction_complete'
-  | 'insufficient_funds'
-  | 'explosion_small'
-  | 'explosion_large'
-  | 'move_confirm_1'
-  | 'move_confirm_2'
-  // Superweapons
-  | 'superweapon_ready'
-  | 'chrono_teleport'
-  | 'nuke_launch'
-  // Unit attack sounds
-  | 'attack_rifleman'
-  | 'attack_tesla'
-  | 'attack_tank'
-  | 'attack_prism'
-  | 'attack_apoc'
-  | 'attack_rocketeer'
-  | 'attack_jet'
-  | 'attack_kirov'
-  | 'attack_destroyer'
-  | 'attack_scorpion';
+export type { SoundEffect } from '../types';
 
 // IMPORTANT: These are placeholder paths. You will need to provide your own sound files
 // and place them in a '/public/sounds' directory (or similar) for them to be accessible.
@@ -53,20 +29,6 @@ const soundFiles: Record<SoundEffect, string> = {
     attack_destroyer: '/sounds/attack_destroyer.wav',
     attack_scorpion: '/sounds/attack_scorpion.wav',
 };
-
-export const unitAttackSounds: Partial<Record<UnitType, SoundEffect>> = {
-    [UnitType.RIFLEMAN]: 'attack_rifleman',
-    [UnitType.TESLA_TROOPER]: 'attack_tesla',
-    [UnitType.TANK]: 'attack_tank',
-    [UnitType.PRISM_TANK]: 'attack_prism',
-    [UnitType.APOCALYPSE_TANK]: 'attack_apoc',
-    [UnitType.ROCKETEER]: 'attack_rocketeer',
-    [UnitType.FIGHTER_JET]: 'attack_jet',
-    [UnitType.KIROV_AIRSHIP]: 'attack_kirov',
-    [UnitType.DESTROYER]: 'attack_destroyer',
-    [UnitType.SEA_SCORPION]: 'attack_scorpion',
-};
-
 
 class SoundService {
     private audioCache: Partial<Record<SoundEffect, HTMLAudioElement>> = {};

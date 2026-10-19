@@ -2,10 +2,11 @@
 import { useEffect } from 'react';
 import { GameState, Position } from '../types';
 import { GAME_LOOP_INTERVAL, MAP_HEIGHT, MAP_WIDTH } from '../constants';
+import { GameAction } from '../state/actions';
 
 export function useGameLoop(
   state: GameState,
-  dispatch: React.Dispatch<any>,
+  dispatch: React.Dispatch<GameAction>,
   mousePosRef: React.MutableRefObject<Position>,
   mainRef: React.RefObject<HTMLDivElement>,
   viewportSize: React.MutableRefObject<{ width: number; height: number; }>,

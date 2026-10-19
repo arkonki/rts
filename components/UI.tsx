@@ -4,6 +4,7 @@ import { AIDifficulty, GameStatus, AIPersonality, AIConfiguration, PlayerState, 
 import { soundService } from '../services/soundService';
 import { EntityIcon } from './icons';
 import { ENTITY_CONFIGS } from '../constants';
+import { GameAction } from '../state/actions';
 
 const MenuButton = ({ onClick, children, disabled=false, small=false }: { onClick: () => void, children: React.ReactNode, disabled?: boolean, small?: boolean }) => (
     <button 
@@ -223,7 +224,7 @@ export const SuperweaponIndicator = ({ playerState, onActivate }: { playerState:
     );
 };
 
-export const ControlGroupsBar = ({ controlGroups, dispatch }: { controlGroups: Record<string, string[]>, dispatch: React.Dispatch<any>}) => {
+export const ControlGroupsBar = ({ controlGroups, dispatch }: { controlGroups: Record<string, string[]>, dispatch: React.Dispatch<GameAction>}) => {
     const [lastClick, setLastClick] = useState({key: '', time: 0});
     
     const handleGroupClick = (key: string) => {

@@ -2,8 +2,9 @@
 import { useEffect } from 'react';
 import { GameState } from '../types';
 import { getLocalAICommand } from '../services/localAIService';
+import { GameAction } from '../state/actions';
 
-export function useAI(state: GameState, dispatch: React.Dispatch<any>) {
+export function useAI(state: GameState, dispatch: React.Dispatch<GameAction>) {
   useEffect(() => {
     if (state.gameStatus !== 'PLAYING') {
       return;

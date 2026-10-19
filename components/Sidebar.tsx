@@ -7,11 +7,12 @@ import { Minimap } from './Minimap';
 import { getProducibleItems } from '../utils/logic';
 import { soundService } from '../services/soundService';
 import Tooltip from './Tooltip';
+import { GameAction } from '../state/actions';
 
 interface SidebarProps {
   playerState: PlayerState;
   state: GameState;
-  dispatch: React.Dispatch<any>;
+  dispatch: React.Dispatch<GameAction>;
   viewportSize: React.MutableRefObject<{ width: number; height: number }>;
   setPlacingBuildingType: (type: BuildingType | null) => void;
   onMouseEnter: () => void;
@@ -38,7 +39,7 @@ const SidebarHeader = ({ playerState }: { playerState: PlayerState }) => {
     );
 };
 
-const ProductionButton = ({ itemType, buildingId, dispatch, playerState, playerEntities }: { itemType: UnitType | BuildingType, buildingId: string, dispatch: React.Dispatch<any>, playerState: PlayerState, playerEntities: GameEntity[] }) => {
+const ProductionButton = ({ itemType, buildingId, dispatch, playerState, playerEntities }: { itemType: UnitType | BuildingType, buildingId: string, dispatch: React.Dispatch<GameAction>, playerState: PlayerState, playerEntities: GameEntity[] }) => {
     const config = ENTITY_CONFIGS[itemType];
     
     const requirements = Array.isArray(config.requires) ? config.requires : (config.requires ? [config.requires] : []);
@@ -122,7 +123,7 @@ const BuildButton = ({ itemType, setPlacingBuildingType, playerState, playerEnti
     );
 };
 
-const SelectionPanel = ({ state, dispatch, setPlacingBuildingType, playerState }: { state: GameState, dispatch: React.Dispatch<any>, setPlacingBuildingType: (type: BuildingType | null) => void, playerState: PlayerState }) => {
+const SelectionPanel = ({ state, dispatch, setPlacingBuildingType, playerState }: { state: GameState, dispatch: React.Dispatch<GameAction>, setPlacingBuildingType: (type: BuildingType | null) => void, playerState: PlayerState }) => {
     const { selectedIds, entities } = state;
     const humanPlayerId = 'PLAYER_1';
     

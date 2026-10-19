@@ -203,7 +203,47 @@ export interface GameState {
   controlGroups: Record<string, string[]>;
   gameStats: Record<PlayerId, PlayerStats>;
   gameSummary: Record<PlayerId, PlayerStats> | null;
-  nextEntityId: number; // monotonic counter used to build unique entity ids
+  /** Monotonic counter for unique ids (entities, visual effects, sound events). Never reset between games. */
+  nextId: number;
+  /** Simulation ticks since the game started. Game time in ms is tick * GAME_LOOP_INTERVAL. */
+  tick: number;
+  /** Seed the current map was generated from. */
+  mapSeed: number;
+  /** Sounds requested by the simulation, played by a hook. Short-lived: pruned a few ticks after creation. */
+  soundEvents: SoundEvent[];
+}
+
+export type SoundEffect =
+  | 'click'
+  | 'place_building'
+  | 'unit_ready'
+  | 'construction_complete'
+  | 'insufficient_funds'
+  | 'explosion_small'
+  | 'explosion_large'
+  | 'move_confirm_1'
+  | 'move_confirm_2'
+  // Superweapons
+  | 'superweapon_ready'
+  | 'chrono_teleport'
+  | 'nuke_launch'
+  // Unit attack sounds
+  | 'attack_rifleman'
+  | 'attack_tesla'
+  | 'attack_tank'
+  | 'attack_prism'
+  | 'attack_apoc'
+  | 'attack_rocketeer'
+  | 'attack_jet'
+  | 'attack_kirov'
+  | 'attack_destroyer'
+  | 'attack_scorpion';
+
+export interface SoundEvent {
+  id: number;
+  sound: SoundEffect;
+  volume?: number;
+  tick: number;
 }
 
 export type AIActionType = 'BUILD' | 'TRAIN' | 'ATTACK' | 'IDLE' | 'LAUNCH_SUPERWEAPON' | 'GATHER' | 'REPAIR';

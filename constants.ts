@@ -1,5 +1,5 @@
 
-import { UnitType, BuildingType, EntityConfig, AIDifficulty, UnitDomain, Position } from './types';
+import { UnitType, BuildingType, EntityConfig, AIDifficulty, UnitDomain, Position, SoundEffect } from './types';
 
 export const TILE_SIZE = 40;
 export const MAP_WIDTH_TILES = 80;
@@ -406,4 +406,17 @@ export const ENTITY_CONFIGS: Record<UnitType | BuildingType, EntityConfig> = {
     description: 'Launches a devastating nuclear missile to obliterate a target area.',
     category: 'BUILDING_SUPERWEAPON',
   },
+};
+
+export const unitAttackSounds: Partial<Record<UnitType, SoundEffect>> = {
+    [UnitType.RIFLEMAN]: 'attack_rifleman',
+    [UnitType.TESLA_TROOPER]: 'attack_tesla',
+    [UnitType.TANK]: 'attack_tank',
+    [UnitType.PRISM_TANK]: 'attack_prism',
+    [UnitType.APOCALYPSE_TANK]: 'attack_apoc',
+    [UnitType.ROCKETEER]: 'attack_rocketeer',
+    [UnitType.FIGHTER_JET]: 'attack_jet',
+    [UnitType.KIROV_AIRSHIP]: 'attack_kirov',
+    [UnitType.DESTROYER]: 'attack_destroyer',
+    [UnitType.SEA_SCORPION]: 'attack_scorpion',
 };

@@ -8,6 +8,8 @@ import { GhostBuilding, SelectionBox, RallyPointFlag } from './components/GameOv
 import { useGameLoop } from './hooks/useGameLoop';
 import { useAI } from './hooks/useAI';
 import { useInputHandling } from './hooks/useInputHandling';
+import { useSoundEvents } from './hooks/useSoundEvents';
+import { newSeed } from './utils/random';
 import { MAP_WIDTH, MAP_HEIGHT, PLAYER_COLORS, TILE_SIZE } from './constants';
 import { GameEntity, FogState } from './types';
 import { soundService } from './services/soundService';
@@ -38,6 +40,7 @@ function App() {
 
   useGameLoop(state, dispatch, mousePosRef, mainRef, viewportSize, isMouseOverSidebar);
   useAI(state, dispatch);
+  useSoundEvents(state.soundEvents);
 
   // Clustering is O(n²); only recompute when entities actually change, not on every re-render.
   const renderableItems = useMemo(() => clusterEntities(state.entities, TILE_SIZE * 0.8), [state.entities]);
@@ -47,7 +50,7 @@ function App() {
   const cursorClass = state.isChronoTeleportPending ? 'cursor-grab' : isAttackMovePending ? 'cursor-cell' : placingBuildingType ? 'cursor-copy' : 'cursor-crosshair';
   
   if (state.gameStatus === 'MENU') {
-    return <MainMenu onStartGame={(options) => dispatch({ type: 'START_GAME', payload: options })} />;
+    return <MainMenu onStartGame={(options) => dispatch({ type: 'START_GAME', payload: { ...options, seed: newSeed() } })} />;
   }
 
   if (state.gameStatus === 'LOADING' || state.terrain.length === 0) {
@@ -149,14 +152,14 @@ function App() {
         {humanPlayerState && GameUI}
         {state.gameStatus === 'PAUSED' && <PauseMenu 
             onResume={() => dispatch({ type: 'RESUME_GAME' })}
-            onRestart={() => dispatch({ type: 'RESTART_GAME' })}
+            onRestart={() => dispatch({ type: 'RESTART_GAME', payload: { seed: newSeed() } })}
             onShowControls={() => setShowControls(true)}
             onMainMenu={() => dispatch({ type: 'MAIN_MENU' })}
         />}
         {(state.gameStatus === 'PLAYER_WIN' || state.gameStatus === 'AI_WIN') && <GameOverScreen 
             status={state.gameStatus}
             gameSummary={state.gameSummary}
-            onRestart={() => dispatch({ type: 'RESTART_GAME' })}
+            onRestart={() => dispatch({ type: 'RESTART_GAME', payload: { seed: newSeed() } })}
             onMainMenu={() => dispatch({ type: 'MAIN_MENU' })}
         />}
         {showControls && <ControlsModal onClose={() => setShowControls(false)} />}

@@ -3,8 +3,9 @@ import { GameState, BuildingType, Position, Unit, UnitType, GameEntity } from '.
 import { soundService, SoundEffect } from '../services/soundService';
 import { TILE_SIZE } from '../constants';
 import { Renderable } from '../utils/clustering';
+import { GameAction } from '../state/actions';
 
-export function useInputHandling(state: GameState, dispatch: React.Dispatch<any>, humanPlayerId: string) {
+export function useInputHandling(state: GameState, dispatch: React.Dispatch<GameAction>, humanPlayerId: string) {
   const [placingBuildingType, setPlacingBuildingType] = useState<BuildingType | null>(null);
   const [isAttackMovePending, setAttackMovePending] = useState(false);
   // Rendered mouse position (state) is only kept up to date while something draws at the cursor

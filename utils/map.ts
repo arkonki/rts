@@ -1,6 +1,7 @@
 
 import { TerrainType, Position, ResourcePatch } from '../types';
 import { MAP_WIDTH_TILES, MAP_HEIGHT_TILES, TILE_SIZE } from '../constants';
+import { Rng } from './random';
 
 interface PathNode { x: number; y: number; g: number; h: number; f: number; parent: PathNode | null; }
 
@@ -76,19 +77,19 @@ function findPathForMapGen(start: {x:number, y:number}, end: {x:number, y:number
     return null;
 }
 
-export function generateMap(startingPositions: Position[]): { terrain: TerrainType[][]; resourcePatches: Record<string, ResourcePatch> } {
+export function generateMap(startingPositions: Position[], rng: Rng): { terrain: TerrainType[][]; resourcePatches: Record<string, ResourcePatch> } {
     let terrain: TerrainType[][] = Array(MAP_HEIGHT_TILES).fill(0).map(() => Array(MAP_WIDTH_TILES).fill(TerrainType.GROUND));
     let resourcePatches: Record<string, ResourcePatch> = {};
 
     const placeFeature = (type: TerrainType, count: number, minSize: number, maxSize: number, irregular: boolean = true) => {
         for (let i = 0; i < count; i++) {
-            const x = Math.floor(Math.random() * MAP_WIDTH_TILES);
-            const y = Math.floor(Math.random() * MAP_HEIGHT_TILES);
-            const size = Math.floor(Math.random() * (maxSize - minSize)) + minSize;
+            const x = Math.floor(rng() * MAP_WIDTH_TILES);
+            const y = Math.floor(rng() * MAP_HEIGHT_TILES);
+            const size = Math.floor(rng() * (maxSize - minSize)) + minSize;
             for (let dy = -size; dy <= size; dy++) {
                 for (let dx = -size; dx <= size; dx++) {
                     let dist = Math.sqrt(dx * dx + dy * dy);
-                    if(irregular) dist += (Math.random() - 0.5) * size * 0.5;
+                    if(irregular) dist += (rng() - 0.5) * size * 0.5;
                     if (dist <= size) {
                         const nx = x + dx;
                         const ny = y + dy;
@@ -166,15 +167,15 @@ export function generateMap(startingPositions: Position[]): { terrain: TerrainTy
 
     const placeResourceCluster = (count: number, center: Position, radius: number, minAmount: number, maxAmount: number) => {
         for (let i = 0; i < count; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = Math.random() * radius;
+            const angle = rng() * Math.PI * 2;
+            const dist = rng() * radius;
             const x = Math.floor(center.x + Math.cos(angle) * dist);
             const y = Math.floor(center.y + Math.sin(angle) * dist);
 
             if (x >= 0 && x < MAP_WIDTH_TILES && y >= 0 && y < MAP_HEIGHT_TILES && terrain[y][x] === TerrainType.GROUND) {
                 const id = `ore_${x}_${y}`;
                 if (resourcePatches[id]) continue; // Avoid overlap
-                const amount = minAmount + Math.random() * (maxAmount - minAmount);
+                const amount = minAmount + rng() * (maxAmount - minAmount);
                 resourcePatches[id] = {
                     id,
                     position: { x: x * TILE_SIZE + TILE_SIZE / 2, y: y * TILE_SIZE + TILE_SIZE / 2 },
