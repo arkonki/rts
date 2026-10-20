@@ -10,6 +10,13 @@ export const MAP_HEIGHT = MAP_HEIGHT_TILES * TILE_SIZE;
 
 export const GAME_LOOP_INTERVAL = 100; // ms
 
+// Under-attack alerts: at most one every 5 s, shown for 6 s.
+export const ALERT_COOLDOWN_TICKS = 50;
+export const ALERT_LIFETIME_TICKS = 60;
+
+// Heading change per tick, in degrees, so units visibly turn instead of snapping.
+export const TURN_STEP_DEGREES = 45;
+
 export const HUMAN_PLAYER_ID = 'PLAYER_1';
 
 // New buildings must be placed within this many tiles of an existing building of the same player.
@@ -22,6 +29,9 @@ export const REPAIR_TEXT_DURATION = 1000; // ms
 export const CHRONO_VORTEX_DURATION = 1500; // ms
 export const NUKE_IMPACT_DURATION = 5000; // ms
 
+
+/** Team colours (#rrggbb) by player index: Allied blue, Soviet red, then green and gold. */
+export const TEAM_COLORS = ['#2f7bff', '#e0242b', '#2fb344', '#f0b429'];
 
 export const PLAYER_COLORS = [
     'border-blue-500',   // Player 1 (Human)

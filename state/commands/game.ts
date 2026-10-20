@@ -1,5 +1,5 @@
 import { AIConfiguration, BuildingType, FogState, GameState, PlayerId, PlayerState, PlayerStats } from '../../types';
-import { DIFFICULTY_SETTINGS, ENTITY_CONFIGS, HUMAN_PLAYER_ID, MAP_HEIGHT_TILES, MAP_WIDTH_TILES, STARTING_POSITIONS } from '../../constants';
+import { DIFFICULTY_SETTINGS, ENTITY_CONFIGS, HUMAN_PLAYER_ID, MAP_HEIGHT, MAP_HEIGHT_TILES, MAP_WIDTH_TILES, STARTING_POSITIONS } from '../../constants';
 import { generateMap } from '../../utils/map';
 import { createRng } from '../../utils/random';
 import { INITIAL_STATE } from '../initialState';
@@ -52,7 +52,11 @@ export function startGame(state: GameState, opponents: AIConfiguration[], seed: 
         };
     });
 
-    const initialViewport = { x: startingPositions[0].x - 400, y: startingPositions[0].y - 400 };
+    // Centre the camera on the human HQ, assuming a typical window; the scroll loop clamps it to the real size.
+    const initialViewport = {
+        x: Math.max(0, startingPositions[0].x - 500),
+        y: Math.max(0, Math.min(MAP_HEIGHT - 700, startingPositions[0].y - 350)),
+    };
 
     let startingState: GameState = {
         ...INITIAL_STATE,

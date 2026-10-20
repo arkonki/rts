@@ -1,7 +1,6 @@
 import React, { useReducer, useState, useMemo } from 'react';
-import { INITIAL_STATE } from './state/reducer';
 import { gameReducer } from './state/reducer';
-import { MainMenu, GameOverScreen, PauseMenu, ControlsModal, SuperweaponIndicator, ControlGroupsBar } from './components/UI';
+import { MainMenu, GameOverScreen, PauseMenu, ControlsModal, SuperweaponIndicator, ControlGroupsBar, AlertBanner } from './components/UI';
 import { Sidebar } from './components/Sidebar';
 import { TerrainCanvas, FogCanvas } from './components/Canvas';
 import { GhostBuilding, SelectionBox, RallyPointFlag } from './components/GameOverlay';
@@ -10,16 +9,19 @@ import { useAI } from './hooks/useAI';
 import { useInputHandling } from './hooks/useInputHandling';
 import { useSoundEvents } from './hooks/useSoundEvents';
 import { newSeed } from './utils/random';
-import { MAP_WIDTH, MAP_HEIGHT, PLAYER_COLORS, TILE_SIZE } from './constants';
-import { GameEntity, FogState } from './types';
+import { createInitialState } from './utils/demoScenario';
+import { MAP_WIDTH, MAP_HEIGHT, TEAM_COLORS, TILE_SIZE } from './constants';
+import { GameEntity, FogState, Position } from './types';
 import { VisualEffectsLayer } from './components/VisualEffects';
 import { GameEntityComponent } from './components/GameEntityComponent';
 import { UnitClusterComponent } from './components/UnitClusterComponent';
 import { ResourcePatchComponent } from './components/ResourceComponent';
-import { clusterEntities, Renderable } from './utils/clustering';
+import { clusterEntities } from './utils/clustering';
+import { SpriteDefs } from './components/sprites';
+import { SpriteGallery } from './components/SpriteGallery';
 
 function App() {
-  const [state, dispatch] = useReducer(gameReducer, INITIAL_STATE);
+  const [state, dispatch] = useReducer(gameReducer, undefined, createInitialState);
   const [showControls, setShowControls] = useState(false);
   const [isMouseOverSidebar, setIsMouseOverSidebar] = useState(false);
   const humanPlayerId = 'PLAYER_1';
@@ -33,34 +35,53 @@ function App() {
     dragStartPos,
     mousePos,
     mousePosRef,
+    keysDownRef,
     setPlacingBuildingType,
     gameEventHandlers
   } = useInputHandling(state, dispatch, humanPlayerId);
 
-  useGameLoop(state, dispatch, mousePosRef, mainRef, viewportSize, isMouseOverSidebar);
+  useGameLoop(state, dispatch, mousePosRef, keysDownRef, mainRef, viewportSize, isMouseOverSidebar);
   useAI(state, dispatch);
   useSoundEvents(state.soundEvents);
 
   // Clustering is O(n²); only recompute when entities actually change, not on every re-render.
   const renderableItems = useMemo(() => clusterEntities(state.entities, TILE_SIZE * 0.8), [state.entities]);
 
+  // `?gallery` in the URL shows every sprite instead of the game (handy for checking artwork).
+  const showGallery = useMemo(() => new URLSearchParams(window.location.search).has('gallery'), []);
+
+  const jumpTo = (position: Position) => {
+    const { width, height } = viewportSize.current;
+    dispatch({
+      type: 'UPDATE_VIEWPORT',
+      payload: {
+        x: Math.max(0, Math.min(position.x - width / 2, MAP_WIDTH - width)),
+        y: Math.max(0, Math.min(position.y - height / 2, MAP_HEIGHT - height)),
+      },
+    });
+  };
+
   const humanPlayerState = state.players[humanPlayerId];
   const selectedEntity = state.selectedIds.length === 1 ? state.entities[state.selectedIds[0]] as GameEntity : null;
   const cursorClass = state.isChronoTeleportPending ? 'cursor-grab' : isAttackMovePending ? 'cursor-cell' : placingBuildingType ? 'cursor-copy' : 'cursor-crosshair';
   
+  if (showGallery) {
+    return <SpriteGallery />;
+  }
+
   if (state.gameStatus === 'MENU') {
     return <MainMenu onStartGame={(options) => dispatch({ type: 'START_GAME', payload: { ...options, seed: newSeed() } })} />;
   }
 
   if (state.gameStatus === 'LOADING' || state.terrain.length === 0) {
-    return <div className="w-screen h-screen flex items-center justify-center bg-black text-white">Generating Map...</div>;
+    return <div className="w-screen h-screen flex items-center justify-center bg-black text-white tracking-widest">GENERATING MAP...</div>;
   }
   
   const playerIds = Object.keys(state.players);
 
   const GameUI = (
-      <div className="flex h-screen w-screen bg-black font-mono overflow-hidden">
-        <main ref={mainRef} onMouseMove={gameEventHandlers.handleMouseMove} className="flex-1 relative bg-gray-900 overflow-hidden">
+      <div className="flex h-screen w-screen bg-black overflow-hidden">
+        <main ref={mainRef} onMouseMove={gameEventHandlers.handleMouseMove} onMouseLeave={gameEventHandlers.handleMouseLeave} className="flex-1 relative overflow-hidden" style={{ background: '#0b0d0f' }}>
           <div className={`absolute ${cursorClass}`} style={{ width: MAP_WIDTH, height: MAP_HEIGHT, transform: `translate(${-state.viewport.x}px, ${-state.viewport.y}px)`}}
             onMouseDown={gameEventHandlers.handleMouseDown} onMouseUp={gameEventHandlers.handleMouseUp} onContextMenu={gameEventHandlers.handleRightClick} >
             
@@ -85,14 +106,14 @@ function App() {
                 if (!isVisible) return null;
 
                 const playerIndex = playerIds.indexOf(item.playerId);
-                const borderColor = PLAYER_COLORS[playerIndex] || 'border-gray-400';
+                const teamColor = TEAM_COLORS[playerIndex] ?? '#9ca3af';
                 
                 if ('isCluster' in item && item.isCluster) {
                      const isSelected = item.units.some(u => state.selectedIds.includes(u.id));
-                     return <UnitClusterComponent key={item.id} cluster={item} isSelected={isSelected} borderColor={borderColor} onEntityClick={gameEventHandlers.handleEntityClick} />;
+                     return <UnitClusterComponent key={item.id} cluster={item} isSelected={isSelected} teamColor={teamColor} onEntityClick={gameEventHandlers.handleEntityClick} />;
                 } else {
                     const isSelected = state.selectedIds.includes(item.id);
-                    return <GameEntityComponent key={item.id} entity={item as GameEntity} isSelected={isSelected} borderColor={borderColor} onEntityClick={gameEventHandlers.handleEntityClick} />;
+                    return <GameEntityComponent key={item.id} entity={item as GameEntity} isSelected={isSelected} teamColor={teamColor} onEntityClick={gameEventHandlers.handleEntityClick} />;
                 }
             })}
 
@@ -119,15 +140,18 @@ function App() {
               <RallyPointFlag position={selectedEntity.rallyPoint} from={selectedEntity.position} />
             )}
           </div>
-          <div className="absolute top-2 right-2 bg-black/50 p-2 rounded-md font-bold text-lg text-yellow-300 shadow-lg pointer-events-none z-20">
-              {state.lastMessage}
-          </div>
+          {state.lastMessage && (
+            <div className="message-bar absolute top-2 right-2 pointer-events-none z-20">
+                {state.lastMessage}
+            </div>
+          )}
+          <AlertBanner alerts={state.alerts} onJump={jumpTo} />
           <SuperweaponIndicator 
             playerState={humanPlayerState} 
             onActivate={() => dispatch({ type: 'ACTIVATE_CHRONO_TELEPORT' })} 
           />
           <div className="absolute top-2 left-2 z-20">
-            <button onClick={() => dispatch({ type: 'PAUSE_GAME' })} className="px-4 py-2 bg-gray-800/80 border border-cyan-400 text-cyan-300 hover:bg-cyan-900 font-bold rounded">
+            <button onClick={() => dispatch({ type: 'PAUSE_GAME' })} className="btn-ra btn-small">
                 Menu
             </button>
           </div>
@@ -148,6 +172,7 @@ function App() {
 
   return (
     <>
+        <SpriteDefs />
         {humanPlayerState && GameUI}
         {state.gameStatus === 'PAUSED' && <PauseMenu 
             onResume={() => dispatch({ type: 'RESUME_GAME' })}

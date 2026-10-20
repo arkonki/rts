@@ -4,8 +4,8 @@ import { INITIAL_STATE } from './initialState';
 import { gameTick } from './systems/tick';
 import { restartGame, returnToMainMenu, startGame } from './commands/game';
 import { createControlGroup, select, selectAndCenterControlGroup, selectControlGroup } from './commands/selection';
-import { commandAttack, commandGather, commandMove, commandRepair, setRallyPoint } from './commands/unitCommands';
-import { placeBuilding, queueProduction } from './commands/buildCommands';
+import { commandAttack, commandGather, commandMove, commandRepair, holdPosition, setRallyPoint, stopUnits } from './commands/unitCommands';
+import { cancelProduction, placeBuilding, queueProduction } from './commands/buildCommands';
 import { activateChronoTeleport, chronoTeleportUnits, launchNuke } from './commands/superweapons';
 import { performAIAction } from './commands/aiActions';
 
@@ -54,9 +54,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return commandMove(state, action.payload, true);
     case 'COMMAND_ATTACK':
       return commandAttack(state, action.payload);
+    case 'STOP_UNITS':
+      return stopUnits(state);
+    case 'HOLD_POSITION':
+      return holdPosition(state);
 
     case 'QUEUE_PRODUCTION':
       return queueProduction(state, action.payload.buildingId, action.payload.itemType);
+    case 'CANCEL_PRODUCTION':
+      return cancelProduction(state, action.payload.buildingId, action.payload.index);
     case 'PLACE_BUILDING':
       return placeBuilding(state, action.payload.buildingType, action.payload.position);
 

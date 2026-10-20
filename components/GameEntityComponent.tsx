@@ -1,21 +1,35 @@
-
 import React from 'react';
 import { GameEntity, Unit, Building, UnitDomain, UnitType } from '../types';
 import { ENTITY_CONFIGS } from '../constants';
-import { EntityIcon } from './icons';
+import { EntitySprite } from './sprites';
+import { mapScale } from './sprites/scale';
 import { FaWrench } from 'react-icons/fa';
 
-const HealthBar = ({ hp, maxHp }: { hp: number; maxHp: number }) => {
-    const percentage = (hp / maxHp) * 100;
-    const color = percentage > 60 ? 'bg-green-500' : percentage > 30 ? 'bg-yellow-500' : 'bg-red-500';
-    return <div className="w-full h-1 bg-gray-700 rounded-full overflow-hidden absolute -bottom-2"><div className={`${color} h-full`} style={{ width: `${percentage}%` }}></div></div>;
+export const HealthBar = ({ hp, maxHp }: { hp: number; maxHp: number }) => {
+    const ratio = Math.max(0, Math.min(1, hp / maxHp));
+    const color = ratio > 0.6 ? '#3ddc4a' : ratio > 0.3 ? '#f4c20d' : '#e0242b';
+    return (
+        <div className="hp-bar" aria-hidden="true">
+            <div className="hp-fill" style={{ width: `${ratio * 100}%`, background: color }} />
+        </div>
+    );
 };
 
-const CargoBar = ({ cargo, capacity }: { cargo: number; capacity: number }) => {
-    const percentage = (cargo / capacity) * 100;
+const CargoBar = ({ cargo, capacity }: { cargo: number; capacity: number }) => (
+    <div className="hp-bar" style={{ top: 'calc(100% + 4px)', bottom: 'auto', height: 3 }} aria-hidden="true">
+        <div className="hp-fill" style={{ width: `${(cargo / capacity) * 100}%`, background: '#f2c14e' }} />
+    </div>
+);
+
+/** Smoke and flames on badly damaged vehicles and buildings. */
+const DamageFx = ({ ratio, isBuilding }: { ratio: number; isBuilding: boolean }) => {
+    if (ratio >= 0.5) return null;
+    const burning = ratio < 0.25;
     return (
-        <div className="w-full h-1 bg-gray-700 rounded-full overflow-hidden absolute -bottom-4">
-            <div className="bg-yellow-400 h-full" style={{ width: `${percentage}%` }}></div>
+        <div className="absolute inset-0 pointer-events-none">
+            <span className="smoke" style={{ left: '30%', top: '35%' }} />
+            <span className="smoke" style={{ left: '62%', top: '55%', animationDelay: '-0.7s' }} />
+            {burning && <span className="fire" style={{ left: isBuilding ? '45%' : '48%', top: '45%' }} />}
         </div>
     );
 };
@@ -23,60 +37,82 @@ const CargoBar = ({ cargo, capacity }: { cargo: number; capacity: number }) => {
 interface GameEntityComponentProps {
     entity: GameEntity;
     isSelected: boolean;
-    borderColor: string;
+    teamColor: string;
     onEntityClick: (e: React.MouseEvent, entity: GameEntity) => void;
 }
 
-export const GameEntityComponent = React.memo(({ entity, isSelected, borderColor, onEntityClick }: GameEntityComponentProps) => {
-  const isBuilding = 'isPowered' in entity;
-  const selectionBorderColor = 'border-cyan-400';
-  const displayBorderColor = isSelected ? selectionBorderColor : borderColor;
-  const type = 'status' in entity ? (entity as Unit).type : (entity as Building).type;
-  const config = ENTITY_CONFIGS[type];
-  const isAirUnit = !isBuilding && config.domain === UnitDomain.AIR;
-  const isConstructing = 'isConstructing' in entity && entity.isConstructing;
-  const isRepairing = 'status' in entity && (entity as Unit).status === 'REPAIRING';
-  
-  const isChronoMiner = entity.type === UnitType.CHRONO_MINER && 'cargoAmount' in entity && config.gatherCapacity;
-  const isFullMiner = isChronoMiner && (entity as Unit).cargoAmount! >= config.gatherCapacity!;
+export const GameEntityComponent = React.memo(({ entity, isSelected, teamColor, onEntityClick }: GameEntityComponentProps) => {
+    const isBuilding = 'isPowered' in entity;
+    const type = entity.type;
+    const config = ENTITY_CONFIGS[type];
+    const unit = isBuilding ? null : (entity as Unit);
+    const building = isBuilding ? (entity as Building) : null;
 
-  const entityStyle: React.CSSProperties = {
-    left: entity.position.x,
-    top: entity.position.y,
-    width: entity.size,
-    height: entity.size,
-    zIndex: isAirUnit ? 10 : 1 // Air units appear above ground units
-  };
+    const isAirUnit = !isBuilding && config.domain === UnitDomain.AIR;
+    const isInfantry = config.category === 'INFANTRY';
+    const isConstructing = !!building?.isConstructing;
+    const isUnpowered = !!building && !building.isConstructing && !building.isPowered;
+    const isRepairing = unit?.status === 'REPAIRING';
 
-  return (
-    <div className={`absolute flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 ${isConstructing ? 'opacity-60' : ''}`}
-         style={entityStyle}
-         onMouseDown={(e) => onEntityClick(e, entity)}>
-      {isAirUnit && (
-        <div 
-          className="absolute bg-black rounded-full opacity-30" 
-          style={{ 
-            width: entity.size * 0.8, 
-            height: entity.size * 0.4, 
-            top: '85%', 
-            left: '50%',
-            transform: 'translate(-50%, -50%)'
-          }}
-        />
-      )}
-      <div className={`w-full h-full border-2 ${displayBorderColor} shadow-lg relative ${isFullMiner ? 'shadow-green-500' : ''}`}>
-        {isFullMiner && <div className="absolute inset-0 bg-green-500/30 animate-pulse"></div>}
-        <EntityIcon type={type} size="full" />
-        <HealthBar hp={entity.hp} maxHp={entity.maxHp} />
-        {isChronoMiner && (
-            <CargoBar cargo={(entity as Unit).cargoAmount || 0} capacity={config.gatherCapacity!} />
-        )}
-        {isRepairing && (
-          <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center animate-pulse">
-            <FaWrench className="w-2 h-2 text-white" />
-          </div>
-        )}
-      </div>
-    </div>
-  );
+    const isChronoMiner = type === UnitType.CHRONO_MINER;
+    const isFullMiner = isChronoMiner && (unit?.cargoAmount ?? 0) >= (config.gatherCapacity ?? Infinity);
+
+    const visualSize = entity.size * mapScale(type);
+    const hpRatio = entity.hp / entity.maxHp;
+    const showBar = isSelected || hpRatio < 1 || isConstructing;
+    const buildProgress = isConstructing ? Math.max(0, Math.min(1, hpRatio)) : 1;
+
+    return (
+        <div
+            className="absolute -translate-x-1/2 -translate-y-1/2 select-none"
+            style={{ left: entity.position.x, top: entity.position.y, width: visualSize, height: visualSize, zIndex: isAirUnit ? 12 : (isBuilding ? 1 : 3) }}
+            onMouseDown={(e) => onEntityClick(e, entity)}
+        >
+            {/* Ground shadow; aircraft cast a longer, fainter one to read as flying. */}
+            {!isBuilding && (
+                <div
+                    className="entity-shadow"
+                    style={{
+                        width: visualSize * (isInfantry ? 0.4 : 0.62),
+                        height: visualSize * (isInfantry ? 0.22 : 0.38),
+                        left: '50%',
+                        top: '50%',
+                        transform: `translate(${isAirUnit ? '-20%, 55%' : '-45%, 5%'})`,
+                        opacity: isAirUnit ? 0.22 : 0.35,
+                    }}
+                />
+            )}
+
+            <div
+                className={`relative w-full h-full ${isUnpowered ? 'entity-unpowered' : ''} ${isFullMiner ? 'miner-full' : ''}`}
+                style={{
+                    transform: unit ? `rotate(${unit.facing ?? 0}deg)` : undefined,
+                    clipPath: isConstructing ? `inset(${(1 - buildProgress) * 100}% 0 0 0)` : undefined,
+                    transition: unit ? 'transform 90ms linear' : undefined,
+                }}
+            >
+                <EntitySprite type={type} team={teamColor} />
+            </div>
+
+            {isConstructing && <div className="scaffold" />}
+            {!isInfantry && <DamageFx ratio={hpRatio} isBuilding={isBuilding} />}
+
+            {isUnpowered && (
+                <svg className="absolute pointer-events-none low-power-icon" viewBox="0 0 24 24" width={18} height={18} style={{ right: 2, top: 2 }}>
+                    <path d="M13 2 4 14h6l-1 8 10-13h-6z" fill="#facc15" stroke="#7c5a00" strokeWidth={1} />
+                </svg>
+            )}
+
+            {isSelected && <div className="select-brackets" style={{ borderRadius: isBuilding ? 4 : 2 }} />}
+            {showBar && <HealthBar hp={entity.hp} maxHp={entity.maxHp} />}
+            {isChronoMiner && unit && config.gatherCapacity && (
+                <CargoBar cargo={unit.cargoAmount || 0} capacity={config.gatherCapacity} />
+            )}
+            {isRepairing && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center animate-pulse">
+                    <FaWrench className="w-2 h-2 text-white" />
+                </div>
+            )}
+        </div>
+    );
 });

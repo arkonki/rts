@@ -55,3 +55,24 @@ export function placeBuilding(state: GameState, buildingType: BuildingType, posi
         lastMessage: `Constructing ${config.name}...`,
     }, 'place_building');
 }
+
+/** Removes one queued item and refunds its full cost. Cancelling the front item resets its progress. */
+export function cancelProduction(state: GameState, buildingId: string, index: number): GameState {
+    const producer = state.entities[buildingId] as Building | undefined;
+    if (!producer || !('productionQueue' in producer) || index < 0 || index >= producer.productionQueue.length) return state;
+
+    const item = producer.productionQueue[index];
+    const refund = ENTITY_CONFIGS[item].cost;
+    const playerState = state.players[producer.playerId];
+
+    const newProducer: Building = {
+        ...producer,
+        productionQueue: producer.productionQueue.filter((_, i) => i !== index),
+        productionProgress: index === 0 ? 0 : producer.productionProgress,
+    };
+    return {
+        ...state,
+        players: { ...state.players, [producer.playerId]: { ...playerState, credits: playerState.credits + refund } },
+        entities: { ...state.entities, [buildingId]: newProducer },
+    };
+}

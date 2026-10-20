@@ -1,7 +1,7 @@
-import { Building, BuildingType, GameState, Position, Unit, UnitDomain, UnitType } from '../../types';
-import { ENTITY_CONFIGS, GAME_LOOP_INTERVAL, TILE_SIZE, unitAttackSounds } from '../../constants';
+import { Building, BuildingType, GameAlert, GameState, Position, Unit, UnitDomain, UnitType } from '../../types';
+import { ALERT_COOLDOWN_TICKS, ENTITY_CONFIGS, GAME_LOOP_INTERVAL, HUMAN_PLAYER_ID, TILE_SIZE, TURN_STEP_DEGREES, unitAttackSounds } from '../../constants';
 import { findPath } from '../../utils/pathfinding';
-import { findNearestEnemy } from '../../utils/entity';
+import { findNearestEnemy, headingTo, turnToward } from '../../utils/entity';
 import { SpatialGrid } from '../../utils/spatialGrid';
 import { TickContext, shallowChanged, withStats } from '../helpers';
 
@@ -19,6 +19,8 @@ export function updateUnits(state: GameState, ctx: TickContext, spatialGrid: Spa
     let newGameStats = state.gameStats;
     let nextId = state.nextId;
     let somethingChanged = false;
+    // Position of the first human entity hit by an enemy this tick, for the under-attack alert.
+    let humanHitAt: Position | null = null;
 
     // --- Repair Bay Logic ---
     const repairBays = Object.values(newEntities).filter(e => e.type === BuildingType.REPAIR_BAY && (e as Building).isPowered && !(e as Building).isConstructing) as Building[];
@@ -124,7 +126,10 @@ export function updateUnits(state: GameState, ctx: TickContext, spatialGrid: Spa
         else { // --- COMBAT LOGIC for non-miners/non-engineers ---
             if (unit.status === 'IDLE' || unit.status === 'ATTACK_MOVING') {
                 const enemy = findNearestEnemy(unit, spatialGrid, state.fogOfWar);
-                if (enemy) {
+                // A unit holding position only engages what is already in weapon range.
+                const reachable = enemy && (!unit.holdPosition ||
+                    Math.hypot(enemy.position.x - unit.position.x, enemy.position.y - unit.position.y) <= (unit.attackRange || 0));
+                if (enemy && reachable) {
                     currentUnit = { ...currentUnit, status: 'ATTACKING', targetId: enemy.id, path: undefined };
                 }
             }
@@ -140,13 +145,17 @@ export function updateUnits(state: GameState, ctx: TickContext, spatialGrid: Spa
                     };
                 } else {
                     const dist = Math.hypot(target.position.x - currentUnit.position.x, target.position.y - currentUnit.position.y);
-                    if (dist > (currentUnit.attackRange || 0)) { // Move closer
+                    if (dist > (currentUnit.attackRange || 0) && currentUnit.holdPosition) {
+                        // Target walked out of range and we must not chase it.
+                        currentUnit = { ...currentUnit, status: 'IDLE', targetId: undefined, path: undefined };
+                    } else if (dist > (currentUnit.attackRange || 0)) { // Move closer
                         if (!currentUnit.path || currentUnit.path.length < 2) {
                            const newPath = findPath(currentUnit.position, target.position, state.terrain, currentUnit.domain);
                            if (newPath) currentUnit.path = newPath;
                         }
                     } else { // In range, attack
                         currentUnit.path = undefined;
+                        currentUnit.facing = turnToward(currentUnit.facing ?? 0, headingTo(currentUnit.position, target.position), TURN_STEP_DEGREES);
                         if (config.attackSpeed && (now - (currentUnit.lastAttackTime || 0) > config.attackSpeed)) {
                             currentUnit.lastAttackTime = now;
                             const damage = currentUnit.damage || 0;
@@ -155,6 +164,10 @@ export function updateUnits(state: GameState, ctx: TickContext, spatialGrid: Spa
                             newVisualEffects.push({ id: `dmg_${nextId++}`, type: 'DAMAGE_TEXT', creationTime: now, text: `${damage}`, position: target.position });
                             newVisualEffects.push({ id: `exp_${nextId++}`, type: 'EXPLOSION', creationTime: now, position: target.position, size: damage > 50 ? 25 : 15 });
                             ctx.emitSound(unitAttackSounds[unit.type] || 'explosion_small', 0.2);
+
+                            if (target.playerId === HUMAN_PLAYER_ID && currentUnit.playerId !== HUMAN_PLAYER_ID && !humanHitAt) {
+                                humanHitAt = target.position;
+                            }
 
                             const newHp = target.hp - damage;
                             if (newHp <= 0) {
@@ -234,6 +247,7 @@ export function updateUnits(state: GameState, ctx: TickContext, spatialGrid: Spa
                 }
             } else {
                 currentUnit.position = { x: currentUnit.position.x + (dx / dist) * 2, y: currentUnit.position.y + (dy / dist) * 2 };
+                currentUnit.facing = turnToward(currentUnit.facing ?? 0, headingTo(unit.position, nextPos), TURN_STEP_DEGREES);
             }
         }
         
@@ -244,8 +258,19 @@ export function updateUnits(state: GameState, ctx: TickContext, spatialGrid: Spa
         }
     });
 
-    if (somethingChanged || newVisualEffects.length > state.visualEffects.length) {
-        return { ...state, entities: newEntities, resourcePatches: newResourcePatches, players: newPlayers, visualEffects: newVisualEffects, gameStats: newGameStats, nextId };
+    // Throttled "base under attack" alert for the human player.
+    let newAlerts = state.alerts;
+    let lastAlertTick = state.lastAlertTick;
+    const hitAt = humanHitAt as Position | null; // assigned inside the unit loop above
+    if (hitAt && tick - state.lastAlertTick >= ALERT_COOLDOWN_TICKS) {
+        const alert: GameAlert = { id: nextId++, kind: 'UNDER_ATTACK', position: hitAt, tick };
+        newAlerts = [...state.alerts, alert];
+        lastAlertTick = tick;
+        ctx.emitSound('under_attack');
+    }
+
+    if (somethingChanged || newVisualEffects.length > state.visualEffects.length || newAlerts !== state.alerts) {
+        return { ...state, entities: newEntities, resourcePatches: newResourcePatches, players: newPlayers, visualEffects: newVisualEffects, gameStats: newGameStats, nextId, alerts: newAlerts, lastAlertTick };
     }
     return state;
 }

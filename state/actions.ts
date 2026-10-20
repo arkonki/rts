@@ -22,8 +22,11 @@ export type GameAction =
     | { type: 'COMMAND_MOVE'; payload: Position }
     | { type: 'COMMAND_ATTACK_MOVE'; payload: Position }
     | { type: 'COMMAND_ATTACK'; payload: string }
+    | { type: 'STOP_UNITS' }
+    | { type: 'HOLD_POSITION' }
     // Building and production
     | { type: 'QUEUE_PRODUCTION'; payload: { buildingId: string; itemType: UnitType | BuildingType } }
+    | { type: 'CANCEL_PRODUCTION'; payload: { buildingId: string; index: number } }
     | { type: 'PLACE_BUILDING'; payload: { buildingType: BuildingType; position: Position } }
     // Superweapons
     | { type: 'ACTIVATE_CHRONO_TELEPORT' }

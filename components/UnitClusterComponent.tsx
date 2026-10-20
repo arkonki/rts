@@ -1,69 +1,45 @@
-
 import React from 'react';
-import { Unit, UnitDomain, UnitType } from '../types';
-import { EntityIcon } from './icons';
+import { UnitDomain, UnitType } from '../types';
 import { Renderable, UnitCluster } from '../utils/clustering';
-
-const HealthBar = ({ hp, maxHp }: { hp: number; maxHp: number }) => {
-    if (maxHp === 0) return null;
-    const percentage = (hp / maxHp) * 100;
-    const color = percentage > 60 ? 'bg-green-500' : percentage > 30 ? 'bg-yellow-500' : 'bg-red-500';
-    return <div className="w-full h-1 bg-gray-700 rounded-full overflow-hidden absolute -bottom-2"><div className={`${color} h-full`} style={{ width: `${percentage}%` }}></div></div>;
-};
-
+import { EntitySprite } from './sprites';
+import { mapScale } from './sprites/scale';
+import { HealthBar } from './GameEntityComponent';
 
 interface UnitClusterComponentProps {
     cluster: UnitCluster;
     isSelected: boolean;
-    borderColor: string;
+    teamColor: string;
     onEntityClick: (e: React.MouseEvent, item: Renderable) => void;
 }
 
-export const UnitClusterComponent = React.memo(({ cluster, isSelected, borderColor, onEntityClick }: UnitClusterComponentProps) => {
-    const { units, position, size, domain, hp, maxHp } = cluster;
-    const selectionBorderColor = 'border-cyan-400';
-    const displayBorderColor = isSelected ? selectionBorderColor : borderColor;
+/** A tight group of units drawn as one sprite with a count badge. */
+export const UnitClusterComponent = React.memo(({ cluster, isSelected, teamColor, onEntityClick }: UnitClusterComponentProps) => {
+    const { units, position, domain, hp, maxHp } = cluster;
     const isAirUnit = domain === UnitDomain.AIR;
 
-    // Find the most numerous unit type to use for the icon
+    // Find the most numerous unit type to use for the artwork
     const typeCounts = units.reduce((acc, unit) => {
         acc[unit.type] = (acc[unit.type] || 0) + 1;
         return acc;
     }, {} as Record<string, number>);
-
     const representativeType = Object.keys(typeCounts).reduce((a, b) => typeCounts[a] > typeCounts[b] ? a : b) as UnitType;
-    
-    const entityStyle: React.CSSProperties = {
-        left: position.x,
-        top: position.y,
-        width: size,
-        height: size,
-        zIndex: isAirUnit ? 10 : 1
-    };
+    const lead = units.find(u => u.type === representativeType) ?? units[0];
+
+    const visualSize = 36 * Math.min(1.6, mapScale(representativeType) / 1.2);
 
     return (
-        <div className="absolute flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2"
-             style={entityStyle}
-             onMouseDown={(e) => onEntityClick(e, cluster)}>
-            {isAirUnit && (
-                <div 
-                    className="absolute bg-black rounded-full opacity-30" 
-                    style={{ 
-                        width: size * 0.8, 
-                        height: size * 0.4, 
-                        top: '85%', 
-                        left: '50%',
-                        transform: 'translate(-50%, -50%)'
-                    }}
-                />
-            )}
-            <div className={`w-full h-full border-2 ${displayBorderColor} shadow-lg relative`}>
-                <EntityIcon type={representativeType} size="full" />
-                <HealthBar hp={hp} maxHp={maxHp} />
-                <div className="absolute -top-2 -right-2 bg-black/80 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-white">
-                    {units.length}
-                </div>
+        <div
+            className="absolute -translate-x-1/2 -translate-y-1/2 select-none"
+            style={{ left: position.x, top: position.y, width: visualSize, height: visualSize, zIndex: isAirUnit ? 12 : 3 }}
+            onMouseDown={(e) => onEntityClick(e, cluster)}
+        >
+            <div className="entity-shadow" style={{ width: visualSize * 0.7, height: visualSize * 0.4, left: '50%', top: '50%', transform: 'translate(-45%, 10%)', opacity: 0.35 }} />
+            <div className="relative w-full h-full" style={{ transform: `rotate(${lead.facing ?? 0}deg)` }}>
+                <EntitySprite type={representativeType} team={teamColor} />
             </div>
+            {isSelected && <div className="select-brackets" />}
+            <HealthBar hp={hp} maxHp={maxHp} />
+            <div className="cluster-badge">{units.length}</div>
         </div>
     );
 });

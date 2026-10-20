@@ -87,6 +87,10 @@ export interface Unit extends BaseEntity {
   gatherTargetId?: string;
   refineryTargetId?: string;
   repairTargetId?: string;
+  /** Heading in degrees, 0 = up/north, clockwise. Purely visual. */
+  facing?: number;
+  /** Hold position: shoot whatever is in range but never chase. Cleared by any move or attack order. */
+  holdPosition?: boolean;
 }
 
 export interface Building extends BaseEntity {
@@ -209,6 +213,10 @@ export interface GameState {
   tick: number;
   /** Seed the current map was generated from. */
   mapSeed: number;
+  /** Recent events worth showing the player (e.g. base under attack). Pruned after a few seconds. */
+  alerts: GameAlert[];
+  /** Tick of the most recent under-attack alert, used to throttle them. */
+  lastAlertTick: number;
   /** Sounds requested by the simulation, played by a hook. Short-lived: pruned a few ticks after creation. */
   soundEvents: SoundEvent[];
 }
@@ -224,6 +232,7 @@ export type SoundEffect =
   | 'move_confirm_1'
   | 'move_confirm_2'
   // Superweapons
+  | 'under_attack'
   | 'superweapon_ready'
   | 'chrono_teleport'
   | 'nuke_launch'
@@ -238,6 +247,13 @@ export type SoundEffect =
   | 'attack_kirov'
   | 'attack_destroyer'
   | 'attack_scorpion';
+
+export interface GameAlert {
+  id: number;
+  kind: 'UNDER_ATTACK';
+  position: Position;
+  tick: number;
+}
 
 export interface SoundEvent {
   id: number;

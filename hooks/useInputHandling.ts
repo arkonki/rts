@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GameState, BuildingType, Position, Unit, UnitType, GameEntity } from '../types';
 import { soundService, SoundEffect } from '../services/soundService';
-import { TILE_SIZE } from '../constants';
+import { MAP_HEIGHT, MAP_WIDTH } from '../constants';
 import { Renderable } from '../utils/clustering';
 import { GameAction } from '../state/actions';
 
@@ -12,7 +12,9 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<Game
   // (building ghost, selection box). The ref always has the latest position without re-rendering,
   // which is what edge scrolling reads.
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const mousePosRef = useRef<Position>({ x: 0, y: 0 });
+  // NaN means "the cursor is not over the map" (no edge scrolling until the mouse moves in).
+  const mousePosRef = useRef<Position>({ x: NaN, y: NaN });
+  const keysDownRef = useRef<Set<string>>(new Set());
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartPos, setDragStartPos] = useState<Position | null>(null);
   const [lastKeyPress, setLastKeyPress] = useState({ key: '', time: 0 });
@@ -77,9 +79,20 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<Game
         setAttackMovePending(false);
         if (state.isChronoTeleportPending) dispatch({ type: 'SELECT', payload: state.selectedIds }); // Resets chrono state
     }
-    if (e.key.toLowerCase() === 'a' && state.selectedIds.some(id => state.entities[id] && 'status' in state.entities[id])) {
+    const hasSelectedUnit = state.selectedIds.some(id => state.entities[id] && 'status' in state.entities[id]);
+    const key = e.key.toLowerCase();
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (key === 'q' && hasSelectedUnit) { // attack-move
         setAttackMovePending(true);
         setPlacingBuildingType(null);
+    }
+    if (key === 'x' && hasSelectedUnit) {
+        soundService.play('click', 0.3);
+        dispatch({ type: 'STOP_UNITS' });
+    }
+    if (key === 'h' && hasSelectedUnit) {
+        soundService.play('click', 0.3);
+        dispatch({ type: 'HOLD_POSITION' });
     }
   }, [state.selectedIds, state.entities, state.gameStatus, state.isChronoTeleportPending, dispatch, lastKeyPress]);
 
@@ -87,6 +100,43 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<Game
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
+
+  // Which scroll keys (arrows / WASD) are currently held; read by the scroll loop in useGameLoop.
+  useEffect(() => {
+    const scrollKeys = new Set(['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd']);
+    const down = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (!scrollKeys.has(key) || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (key.startsWith('arrow')) e.preventDefault();
+      keysDownRef.current.add(key);
+
+      // A quick tap can be released before the next scroll tick, so nudge the camera right away too.
+      const { state: current, dispatch: send } = latest.current;
+      if (!e.repeat && current.gameStatus === 'PLAYING') {
+        const STEP = 40;
+        const dx = (key === 'arrowright' || key === 'd' ? STEP : 0) - (key === 'arrowleft' || key === 'a' ? STEP : 0);
+        const dy = (key === 'arrowdown' || key === 's' ? STEP : 0) - (key === 'arrowup' || key === 'w' ? STEP : 0);
+        const { width, height } = viewportSize.current;
+        send({
+          type: 'UPDATE_VIEWPORT',
+          payload: {
+            x: Math.max(0, Math.min(current.viewport.x + dx, MAP_WIDTH - width)),
+            y: Math.max(0, Math.min(current.viewport.y + dy, MAP_HEIGHT - height)),
+          },
+        });
+      }
+    };
+    const up = (e: KeyboardEvent) => { keysDownRef.current.delete(e.key.toLowerCase()); };
+    const clear = () => keysDownRef.current.clear();
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('blur', clear);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', clear);
+    };
+  }, []);
 
   const handleEntityClick = useCallback((e: React.MouseEvent, item: Renderable) => {
       const { state, dispatch, humanPlayerId } = latest.current;
@@ -209,6 +259,10 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<Game
     }
   };
 
+  const handleMouseLeave = () => {
+      mousePosRef.current = { x: NaN, y: NaN };
+  };
+
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
       if (mainRef.current) {
         const rect = mainRef.current.getBoundingClientRect();
@@ -227,12 +281,14 @@ export function useInputHandling(state: GameState, dispatch: React.Dispatch<Game
       dragStartPos,
       mousePos,
       mousePosRef,
+      keysDownRef,
       setPlacingBuildingType,
       gameEventHandlers: {
           handleMouseDown,
           handleMouseUp,
           handleRightClick,
           handleMouseMove,
+          handleMouseLeave,
           handleEntityClick,
       }
   };

@@ -15,6 +15,7 @@ const soundFiles: Record<SoundEffect, string> = {
     explosion_large: 'https://maantoa.ee/audio/explosion-large.mp3',
     move_confirm_1: 'https://maantoa.ee/audio/moving.mp3',
     move_confirm_2: 'https://maantoa.ee/audio/movin-out.mp3',
+    under_attack: '', // synthesised in SoundService.playAlarm, no file needed
     superweapon_ready: '/sounds/superweapon_ready.mp3',
     chrono_teleport: '/sounds/chrono_teleport.mp3',
     nuke_launch: '/sounds/nuke_launch.mp3',
@@ -34,6 +35,7 @@ class SoundService {
     private audioCache: Partial<Record<SoundEffect, HTMLAudioElement>> = {};
     private isInitialized = false;
     private areSoundsPreloaded = false;
+    private audioContext: AudioContext | null = null;
 
     // This method needs to be called after a user interaction to enable audio playback.
     public init() {
@@ -50,7 +52,8 @@ class SoundService {
         }
         
         return new Promise((resolve) => {
-            const soundKeys = Object.keys(soundFiles) as SoundEffect[];
+            // Synthesised sounds have no file to preload.
+            const soundKeys = (Object.keys(soundFiles) as SoundEffect[]).filter(key => soundFiles[key] !== '');
             let loadedCount = 0;
             const totalSounds = soundKeys.length;
             let resolved = false;
@@ -105,6 +108,10 @@ class SoundService {
             console.warn(`Sound service not initialized. Call init() on first user interaction.`);
             return;
         }
+        if (sound === 'under_attack') {
+            this.playAlarm(volume);
+            return;
+        }
         const audio = this.audioCache[sound];
         if (audio) {
             // Cloning the node allows for playing the same sound multiple times simultaneously.
@@ -116,6 +123,29 @@ class SoundService {
             });
         } else {
             console.warn(`Sound not found in cache: ${sound}`);
+        }
+    }
+
+    /** Short two-tone warning siren built with Web Audio, so it needs no sound file. */
+    private playAlarm(volume: number) {
+        try {
+            const context = this.audioContext ?? (this.audioContext = new AudioContext());
+            const start = context.currentTime;
+            [880, 660, 880].forEach((frequency, i) => {
+                const oscillator = context.createOscillator();
+                const gain = context.createGain();
+                const t = start + i * 0.2;
+                oscillator.type = 'square';
+                oscillator.frequency.setValueAtTime(frequency, t);
+                gain.gain.setValueAtTime(0.0001, t);
+                gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume * 0.25), t + 0.02);
+                gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.17);
+                oscillator.connect(gain).connect(context.destination);
+                oscillator.start(t);
+                oscillator.stop(t + 0.18);
+            });
+        } catch {
+            // Audio is optional; ignore failures (no Web Audio, autoplay blocked, ...).
         }
     }
 }

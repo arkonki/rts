@@ -1,5 +1,5 @@
 import { GameState, SoundEffect } from '../../types';
-import { GAME_LOOP_INTERVAL, TILE_SIZE } from '../../constants';
+import { ALERT_LIFETIME_TICKS, GAME_LOOP_INTERVAL, TILE_SIZE } from '../../constants';
 import { SpatialGrid } from '../../utils/spatialGrid';
 import { SOUND_RETENTION_TICKS, TickContext } from '../helpers';
 import { updateBuildingConstruction } from './construction';
@@ -44,6 +44,9 @@ export function gameTick(state: GameState): GameState {
         nextId,
         soundEvents,
         visualEffects: updateVisualEffects(nextState.visualEffects, now),
+        alerts: nextState.alerts.some(a => tick - a.tick >= ALERT_LIFETIME_TICKS)
+            ? nextState.alerts.filter(a => tick - a.tick < ALERT_LIFETIME_TICKS)
+            : nextState.alerts,
         players: updateAICooldowns(nextState.players),
         gameStatus: newGameStatus,
         // If the game just ended, capture the stats for the summary screen.

@@ -1,13 +1,12 @@
-
 import React from 'react';
-import { GameState, BuildingType, UnitType, Building, PlayerState, GameEntity } from '../types';
-import { ENTITY_CONFIGS, MAP_HEIGHT, MAP_WIDTH } from '../constants';
-import { CreditsIcon, PowerIcon, EntityIcon } from './icons';
+import { GameState, BuildingType, UnitType, Building, Unit, PlayerState, GameEntity } from '../types';
+import { ENTITY_CONFIGS, MAP_HEIGHT, MAP_WIDTH, HUMAN_PLAYER_ID, TEAM_COLORS } from '../constants';
+import { CreditsIcon, EntityIcon } from './icons';
 import { Minimap } from './Minimap';
 import { getProducibleItems } from '../utils/logic';
 import { soundService } from '../services/soundService';
-import Tooltip from './Tooltip';
 import { GameAction } from '../state/actions';
+import Tooltip from './Tooltip';
 
 interface SidebarProps {
   playerState: PlayerState;
@@ -20,72 +19,131 @@ interface SidebarProps {
 }
 
 const SidebarHeader = ({ playerState }: { playerState: PlayerState }) => {
-    const powerBalance = playerState.power.produced - playerState.power.consumed;
-    const powerColor = powerBalance >= 0 ? 'text-green-400' : 'text-red-500';
+    const { produced, consumed } = playerState.power;
+    const lowPower = consumed > produced;
+    const scale = Math.max(produced, consumed, 1);
 
     return (
-        <div className="p-4 bg-black/30 border-b-2 border-cyan-500/50">
-            <div className="flex justify-around items-center text-lg font-bold">
-                <div className="flex items-center space-x-2 text-yellow-300">
+        <div className="panel p-3">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
                     <div className="w-6 h-6"><CreditsIcon /></div>
-                    <span>{playerState.credits}</span>
+                    <span className="led led-gold text-2xl">{Math.floor(playerState.credits)}</span>
                 </div>
-                <div className={`flex items-center space-x-2 ${powerColor}`}>
-                    <div className="w-6 h-6"><PowerIcon /></div>
-                    <span>{powerBalance} / {playerState.power.produced}</span>
-                </div>
+                <span className={`text-[11px] font-bold tracking-widest ${lowPower ? 'text-red-400 animate-pulse' : 'text-green-400'}`}>
+                    {lowPower ? 'LOW POWER' : 'POWER OK'}
+                </span>
+            </div>
+            <div className="power-bar mt-2" title={`Output ${produced}, draw ${consumed}`}>
+                <div className={`power-supply ${lowPower ? 'power-supply-low' : ''}`} style={{ width: `${(produced / scale) * 100}%` }} />
+                <div className="power-draw" style={{ left: `${Math.min(99, (consumed / scale) * 100)}%` }} />
+            </div>
+            <div className="flex justify-between text-[10px] tracking-wider text-gray-400 mt-1">
+                <span>OUTPUT {produced}</span>
+                <span>DRAW {consumed}</span>
             </div>
         </div>
     );
 };
 
-const ProductionButton = ({ itemType, buildingId, dispatch, playerState, playerEntities }: { itemType: UnitType | BuildingType, buildingId: string, dispatch: React.Dispatch<GameAction>, playerState: PlayerState, playerEntities: GameEntity[] }) => {
+interface CameoButtonProps {
+    itemType: UnitType | BuildingType;
+    label: string;
+    disabled: boolean;
+    progress?: number;
+    queued?: number;
+    tooltip: React.ReactNode;
+    onClick: () => void;
+    onContextMenu?: () => void;
+}
+
+const CameoButton = ({ itemType, label, disabled, progress = 0, queued = 0, tooltip, onClick, onContextMenu }: CameoButtonProps) => {
     const config = ENTITY_CONFIGS[itemType];
-    
-    const requirements = Array.isArray(config.requires) ? config.requires : (config.requires ? [config.requires] : []);
+    return (
+        <Tooltip content={tooltip}>
+            <div className="flex flex-col items-center w-[84px]">
+                <button
+                    onClick={onClick}
+                    onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(); }}
+                    className={`cameo-btn ${disabled ? 'cameo-btn-disabled' : ''}`}
+                    aria-label={label}
+                    disabled={disabled}
+                >
+                    <EntityIcon type={itemType} size="full" />
+                    {progress > 0 && <div className="cameo-progress" style={{ height: `${(1 - progress) * 100}%` }} />}
+                    {queued > 0 && <span className="cameo-count">{queued}</span>}
+                    <span className="cameo-cost">${config.cost}</span>
+                </button>
+                <span className="cameo-name">{config.name}</span>
+            </div>
+        </Tooltip>
+    );
+};
+
+const itemTooltip = (itemType: UnitType | BuildingType, canAfford: boolean, requirementsMet: boolean, requirements: BuildingType[]) => {
+    const config = ENTITY_CONFIGS[itemType];
+    return (
+        <>
+            <h4 className={`font-bold ${canAfford ? 'text-yellow-300' : 'text-red-400'}`}>{config.name} - ${config.cost}</h4>
+            <p className="text-sm text-gray-300">{config.description}</p>
+            {!requirementsMet && <p className="text-xs text-red-400 mt-1">Requires: {requirements.map(r => ENTITY_CONFIGS[r].name).join(', ')}</p>}
+        </>
+    );
+};
+
+const requirementsOf = (itemType: UnitType | BuildingType): BuildingType[] => {
+    const requires = ENTITY_CONFIGS[itemType].requires;
+    return Array.isArray(requires) ? requires : (requires ? [requires] : []);
+};
+
+const ProductionButton = ({ itemType, producer, dispatch, playerState, playerEntities }: { itemType: UnitType | BuildingType, producer: Building, dispatch: React.Dispatch<GameAction>, playerState: PlayerState, playerEntities: GameEntity[] }) => {
+    const config = ENTITY_CONFIGS[itemType];
+    const requirements = requirementsOf(itemType);
     // Only finished buildings count, matching the reducer's requirement check.
     const playerBuildingTypes = playerEntities.filter(e => 'isPowered' in e && !(e as Building).isConstructing).map(e => e.type);
-    
+
     const canAfford = playerState.credits >= config.cost;
     const requirementsMet = requirements.every(req => playerBuildingTypes.includes(req));
-    const isDisabled = !canAfford || !requirementsMet;
+    const isDisabled = !canAfford || !requirementsMet || !producer.isPowered;
+
+    const isActive = producer.productionQueue[0] === itemType;
+    const progress = isActive ? Math.min(1, producer.productionProgress / config.buildTime) : 0;
+    const queued = producer.productionQueue.filter(item => item === itemType).length;
 
     const handleClick = () => {
-        if(isDisabled) {
+        if (isDisabled) {
             soundService.play('insufficient_funds');
             return;
         }
         soundService.play('click');
-        dispatch({ type: 'QUEUE_PRODUCTION', payload: { buildingId, itemType } });
+        dispatch({ type: 'QUEUE_PRODUCTION', payload: { buildingId: producer.id, itemType } });
     };
 
-    const tooltipContent = (
-        <>
-            <h4 className={`font-bold ${canAfford ? 'text-cyan-300' : 'text-red-400'}`}>{config.name} - ${config.cost}</h4>
-            <p className="text-sm text-gray-300">{config.description}</p>
-            {!requirementsMet && <p className="text-xs text-red-400 mt-1">Requires: {requirements.join(', ')}</p>}
-        </>
-    );
+    const handleCancel = () => {
+        const index = producer.productionQueue.lastIndexOf(itemType);
+        if (index >= 0) {
+            soundService.play('click');
+            dispatch({ type: 'CANCEL_PRODUCTION', payload: { buildingId: producer.id, index } });
+        }
+    };
 
     return (
-        <Tooltip content={tooltipContent}>
-            <button
-                onClick={handleClick}
-                className={`w-16 h-16 bg-gray-900/50 border-2 p-1 transition-colors ${isDisabled ? 'border-gray-700 opacity-50 cursor-not-allowed' : 'border-gray-600 hover:border-cyan-400 focus:border-cyan-400'}`}
-                aria-label={`Produce ${config.name}`}
-                disabled={isDisabled}
-            >
-                <EntityIcon type={itemType} size="full" />
-            </button>
-        </Tooltip>
+        <CameoButton
+            itemType={itemType}
+            label={`Produce ${config.name}`}
+            disabled={isDisabled}
+            progress={progress}
+            queued={queued}
+            tooltip={<>{itemTooltip(itemType, canAfford, requirementsMet, requirements)}{queued > 0 && <p className="text-xs text-gray-400 mt-1">Right-click to cancel one.</p>}</>}
+            onClick={handleClick}
+            onContextMenu={handleCancel}
+        />
     );
 };
 
 const BuildButton = ({ itemType, setPlacingBuildingType, playerState, playerEntities }: { itemType: BuildingType, setPlacingBuildingType: (type: BuildingType) => void, playerState: PlayerState, playerEntities: GameEntity[] }) => {
     const config = ENTITY_CONFIGS[itemType];
-    
-    const requirements = Array.isArray(config.requires) ? config.requires : (config.requires ? [config.requires] : []);
-    // Only finished buildings count, matching the reducer's requirement check.
+    const requirements = requirementsOf(itemType);
     const playerBuildingTypes = playerEntities.filter(e => 'isPowered' in e && !(e as Building).isConstructing).map(e => e.type);
 
     const canAfford = playerState.credits >= config.cost;
@@ -93,7 +151,7 @@ const BuildButton = ({ itemType, setPlacingBuildingType, playerState, playerEnti
     const isDisabled = !canAfford || !requirementsMet;
 
     const handleClick = () => {
-        if(isDisabled) {
+        if (isDisabled) {
             soundService.play('insufficient_funds');
             return;
         }
@@ -101,80 +159,111 @@ const BuildButton = ({ itemType, setPlacingBuildingType, playerState, playerEnti
         setPlacingBuildingType(itemType);
     };
 
-    const tooltipContent = (
-        <>
-            <h4 className={`font-bold ${canAfford ? 'text-cyan-300' : 'text-red-400'}`}>{config.name} - ${config.cost}</h4>
-            <p className="text-sm text-gray-300">{config.description}</p>
-            {!requirementsMet && <p className="text-xs text-red-400 mt-1">Requires: {requirements.join(', ')}</p>}
-        </>
-    );
-
     return (
-        <Tooltip content={tooltipContent}>
-            <button
-                onClick={handleClick}
-                className={`w-16 h-16 bg-gray-900/50 border-2 p-1 transition-colors ${isDisabled ? 'border-gray-700 opacity-50 cursor-not-allowed' : 'border-gray-600 hover:border-cyan-400 focus:border-cyan-400'}`}
-                aria-label={`Build ${config.name}`}
-                disabled={isDisabled}
-            >
-                <EntityIcon type={itemType} size="full" />
-            </button>
-        </Tooltip>
+        <CameoButton
+            itemType={itemType}
+            label={`Build ${config.name}`}
+            disabled={isDisabled}
+            tooltip={itemTooltip(itemType, canAfford, requirementsMet, requirements)}
+            onClick={handleClick}
+        />
     );
 };
 
+/** The production queue of the selected building. Click (or right-click) an item to cancel it and get a refund. */
+const QueueStrip = ({ producer, dispatch }: { producer: Building, dispatch: React.Dispatch<GameAction> }) => {
+    if (producer.productionQueue.length === 0) return null;
+
+    const cancel = (index: number) => {
+        soundService.play('click');
+        dispatch({ type: 'CANCEL_PRODUCTION', payload: { buildingId: producer.id, index } });
+    };
+
+    return (
+        <div className="w-full mt-4">
+            <h4 className="section-title">Queue <span className="text-gray-500 normal-case tracking-normal">(click to cancel and refund)</span></h4>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+                {producer.productionQueue.map((item, index) => {
+                    const config = ENTITY_CONFIGS[item];
+                    const progress = index === 0 ? Math.min(1, producer.productionProgress / config.buildTime) : 0;
+                    return (
+                        <button
+                            key={`${item}-${index}`}
+                            className="queue-item"
+                            title={`Cancel ${config.name} (refund $${config.cost})`}
+                            onClick={() => cancel(index)}
+                            onContextMenu={(e) => { e.preventDefault(); cancel(index); }}
+                        >
+                            <EntityIcon type={item} size="full" />
+                            {index === 0 && <div className="queue-progress" style={{ width: `${progress * 100}%` }} />}
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+const UnitCommands = ({ dispatch }: { dispatch: React.Dispatch<GameAction> }) => (
+    <div className="flex gap-2 mt-3 w-full">
+        <button className="btn-ra btn-small flex-1" onClick={() => { soundService.play('click'); dispatch({ type: 'STOP_UNITS' }); }}>
+            Stop <kbd>X</kbd>
+        </button>
+        <button className="btn-ra btn-small flex-1" onClick={() => { soundService.play('click'); dispatch({ type: 'HOLD_POSITION' }); }}>
+            Hold <kbd>H</kbd>
+        </button>
+    </div>
+);
+
 const SelectionPanel = ({ state, dispatch, setPlacingBuildingType, playerState }: { state: GameState, dispatch: React.Dispatch<GameAction>, setPlacingBuildingType: (type: BuildingType | null) => void, playerState: PlayerState }) => {
     const { selectedIds, entities } = state;
-    const humanPlayerId = 'PLAYER_1';
-    
+
     if (selectedIds.length === 0) {
-        return <div className="p-4 text-center text-gray-400">No selection.</div>;
+        return <div className="p-4 text-center text-gray-500 text-sm tracking-wider">NO SELECTION</div>;
     }
 
     if (selectedIds.length === 1) {
         const entity = entities[selectedIds[0]];
         if (!entity) return null;
-        if (entity.playerId !== humanPlayerId) return <div className="p-4 text-center text-gray-400">Enemy selected.</div>;
+        if (entity.playerId !== HUMAN_PLAYER_ID) return <div className="p-4 text-center text-red-400 text-sm tracking-wider">HOSTILE FORCES</div>;
 
         const config = ENTITY_CONFIGS[entity.type];
-        const playerEntities = Object.values(entities).filter(e => e.playerId === humanPlayerId);
+        const playerEntities = Object.values(entities).filter(e => e.playerId === HUMAN_PLAYER_ID);
         const { producibleUnits, producibleBuildings } = getProducibleItems(playerState, playerEntities);
 
+        const building = 'isPowered' in entity ? (entity as Building) : null;
+        const unit = building ? null : (entity as Unit);
+
         let producibleItems: (UnitType | BuildingType)[] = [];
-        if ('isPowered' in entity) {
+        if (building && !building.isConstructing) {
             producibleItems = [...producibleUnits, ...producibleBuildings].filter(item => ENTITY_CONFIGS[item].producedBy === entity.type);
         }
 
+        const hpRatio = entity.hp / entity.maxHp;
+
         return (
             <div className="p-4 flex flex-col items-center">
-                <div className="w-24 h-24 mb-2"><EntityIcon type={entity.type} size="full" /></div>
-                <h3 className="text-xl font-bold">{config.name}</h3>
-                <p className="text-sm text-gray-400 mb-2">{Math.ceil(entity.hp)} / {entity.maxHp}</p>
-                {'isPowered' in entity && !(entity as Building).isPowered && <p className="text-red-500 font-bold">LOW POWER</p>}
-                
-                {producibleItems.length > 0 && (
-                    <div className="grid grid-cols-3 gap-2 mt-4">
+                <div className="w-24 h-24 mb-2"><EntityIcon type={entity.type} size="full" team={TEAM_COLORS[0]} /></div>
+                <h3 className="text-lg font-bold tracking-wider text-yellow-200">{config.name}</h3>
+                <div className="w-full mt-2 hp-bar-lg"><div style={{ width: `${hpRatio * 100}%`, background: hpRatio > 0.6 ? '#3ddc4a' : hpRatio > 0.3 ? '#f4c20d' : '#e0242b' }} /></div>
+                <p className="text-xs text-gray-400 mt-1">{Math.ceil(entity.hp)} / {entity.maxHp}</p>
+                {building?.isConstructing && <p className="text-yellow-300 font-bold text-sm mt-2 tracking-widest">CONSTRUCTING {Math.floor(hpRatio * 100)}%</p>}
+                {building && !building.isConstructing && !building.isPowered && <p className="text-red-400 font-bold mt-2 tracking-widest animate-pulse">LOW POWER</p>}
+                {unit && unit.holdPosition && <p className="text-cyan-300 text-xs mt-2 tracking-widest">HOLDING POSITION</p>}
+                {unit && <UnitCommands dispatch={dispatch} />}
+
+                {producibleItems.length > 0 && building && (
+                    <div className="grid grid-cols-3 gap-x-1 gap-y-3 mt-4">
                         {producibleItems.map(item => {
                             if (Object.values(UnitType).includes(item as UnitType)) {
-                                return <ProductionButton key={item} itemType={item as UnitType} buildingId={entity.id} dispatch={dispatch} playerState={playerState} playerEntities={playerEntities} />;
-                            } else {
-                                return <BuildButton key={item} itemType={item as BuildingType} setPlacingBuildingType={setPlacingBuildingType} playerState={playerState} playerEntities={playerEntities} />;
+                                return <ProductionButton key={item} itemType={item} producer={building} dispatch={dispatch} playerState={playerState} playerEntities={playerEntities} />;
                             }
+                            return <BuildButton key={item} itemType={item as BuildingType} setPlacingBuildingType={setPlacingBuildingType} playerState={playerState} playerEntities={playerEntities} />;
                         })}
                     </div>
                 )}
-                
-                {'productionQueue' in entity && (entity as Building).productionQueue.length > 0 && (
-                    <div className="w-full mt-4 space-y-1">
-                        <h4 className="text-center font-bold text-gray-400 border-t border-gray-700 pt-2 mb-2">Queue</h4>
-                        {(entity as Building).productionQueue.map((item, index) => (
-                           <div key={index} className="flex items-center space-x-2 bg-gray-700 p-1 rounded-md">
-                                <div className="w-8 h-8"><EntityIcon type={item as UnitType} size="full"/></div>
-                                <span>{ENTITY_CONFIGS[item as UnitType].name}</span>
-                           </div>
-                        ))}
-                    </div>
-                )}
+
+                {building && !building.isConstructing && <QueueStrip producer={building} dispatch={dispatch} />}
             </div>
         );
     }
@@ -182,18 +271,19 @@ const SelectionPanel = ({ state, dispatch, setPlacingBuildingType, playerState }
     // Multiple selection
     return (
         <div className="p-4">
-            <h3 className="text-lg font-bold mb-2">Selected Units ({selectedIds.length})</h3>
+            <h3 className="section-title mb-2">Selected units ({selectedIds.length})</h3>
             <div className="grid grid-cols-4 gap-1">
                 {selectedIds.slice(0, 16).map(id => { // Limit to showing 16 icons
                     const entity = entities[id];
-                    if (!entity || entity.playerId !== humanPlayerId) return null;
+                    if (!entity || entity.playerId !== HUMAN_PLAYER_ID) return null;
                     return (
-                        <div key={id} className="w-12 h-12 p-0.5 border border-gray-600">
-                           <EntityIcon type={entity.type} size="full" />
+                        <div key={id} className="w-14 h-14">
+                           <EntityIcon type={entity.type} size="full" team={TEAM_COLORS[0]} />
                         </div>
                     );
                 })}
             </div>
+            <UnitCommands dispatch={dispatch} />
         </div>
     );
 };
@@ -214,23 +304,26 @@ export const Sidebar = ({ playerState, state, dispatch, viewportSize, setPlacing
     };
 
     if (!playerState) {
-        return <aside className="w-80 h-screen border-l-2" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}></aside>;
+        return <aside className="sidebar w-80 h-screen flex-shrink-0" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}></aside>;
     }
 
     const humanPlayerEntities = Object.values(state.entities).filter(e => e.playerId === playerState.id);
     const hasHQ = humanPlayerEntities.some(e => e.type === BuildingType.HQ);
 
     return (
-        <aside className="w-80 h-screen flex flex-col border-l-2" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+        <aside className="sidebar w-80 h-screen flex flex-col flex-shrink-0" onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
+            <div className="p-2">
+                <div className="radar-bezel">
+                    <div className="radar-label">RADAR</div>
+                    {hasHQ
+                        ? <Minimap state={state} viewportSize={viewportSize} onMinimapClick={handleMinimapClick} />
+                        : <div className="radar-offline">RADAR OFFLINE</div>}
+                </div>
+            </div>
             <SidebarHeader playerState={playerState} />
-            <div className="flex-grow overflow-y-auto">
+            <div className="flex-grow overflow-y-auto sidebar-scroll">
                 <SelectionPanel state={state} dispatch={dispatch} setPlacingBuildingType={setPlacingBuildingType} playerState={playerState}/>
             </div>
-            {hasHQ && (
-              <div className="p-2 border-t-2 border-cyan-500/50">
-                   <Minimap state={state} viewportSize={viewportSize} onMinimapClick={handleMinimapClick} />
-              </div>
-            )}
         </aside>
     );
 };

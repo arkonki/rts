@@ -2,6 +2,19 @@ import { Unit, GameEntity, FogState, UnitDomain } from '../types';
 import { ENTITY_CONFIGS, TILE_SIZE, HUMAN_PLAYER_ID } from '../constants';
 import { SpatialGrid } from './spatialGrid';
 
+/** Heading in degrees (0 = up/north, clockwise) from one point to another. */
+export function headingTo(from: { x: number; y: number }, to: { x: number; y: number }): number {
+    return (Math.atan2(to.x - from.x, -(to.y - from.y)) * 180) / Math.PI;
+}
+
+/** Rotates `current` toward `desired` by at most `maxStep` degrees, taking the short way round. */
+export function turnToward(current: number, desired: number, maxStep: number): number {
+    let delta = ((((desired - current + 540) % 360) + 360) % 360) - 180;
+    if (Math.abs(delta) <= maxStep) return desired;
+    delta = Math.sign(delta) * maxStep;
+    return current + delta;
+}
+
 /** Buildings are implicitly ground-domain targets. */
 export function getTargetDomain(entity: GameEntity): UnitDomain {
     return 'domain' in entity ? entity.domain : UnitDomain.GROUND;

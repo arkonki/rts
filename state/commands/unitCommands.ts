@@ -1,6 +1,7 @@
 import { Building, GameState, Position, Unit, UnitType } from '../../types';
 import { findPath } from '../../utils/pathfinding';
 import { canUnitAttack } from '../../utils/entity';
+import { HUMAN_PLAYER_ID } from '../../constants';
 
 export function setRallyPoint(state: GameState, buildingId: string, position: Position): GameState {
     const building = state.entities[buildingId] as Building;
@@ -57,6 +58,7 @@ export function commandMove(state: GameState, position: Position, attackMove: bo
                 unit.status = attackMove ? 'ATTACK_MOVING' : 'MOVING';
                 unit.targetPosition = position; // Store final destination
                 unit.targetId = undefined;
+                unit.holdPosition = false;
                 newState.entities[id] = unit;
             }
         }
@@ -80,7 +82,40 @@ export function commandAttack(state: GameState, targetId: string): GameState {
             unit.targetId = targetId;
             unit.targetPosition = undefined;
             unit.path = undefined; // Clear path when given direct attack order
+            unit.holdPosition = false;
             newState.entities[id] = unit;
+        }
+    });
+    return newState;
+}
+
+/** Stop: drop every order of the selected units (they still defend themselves). */
+export function stopUnits(state: GameState): GameState {
+    const newState = { ...state, entities: { ...state.entities } };
+    state.selectedIds.forEach(id => {
+        const entity = newState.entities[id];
+        if (entity && 'status' in entity && entity.playerId === HUMAN_PLAYER_ID) {
+            newState.entities[id] = {
+                ...entity,
+                status: 'IDLE', path: undefined, targetId: undefined, targetPosition: undefined,
+                repairTargetId: undefined, holdPosition: false,
+            };
+        }
+    });
+    return newState;
+}
+
+/** Hold position: selected combat units stop and only shoot what is already in range. */
+export function holdPosition(state: GameState): GameState {
+    const newState = { ...state, entities: { ...state.entities } };
+    state.selectedIds.forEach(id => {
+        const entity = newState.entities[id];
+        if (entity && 'status' in entity && entity.playerId === HUMAN_PLAYER_ID
+            && entity.type !== UnitType.CHRONO_MINER && entity.type !== UnitType.ENGINEER) {
+            newState.entities[id] = {
+                ...entity,
+                status: 'IDLE', path: undefined, targetId: undefined, targetPosition: undefined, holdPosition: true,
+            };
         }
     });
     return newState;
