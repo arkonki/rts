@@ -1,4 +1,4 @@
-import { Building, BuildingType, GameAlert, GameState, Position, Unit, UnitDomain, UnitType } from '../../types';
+import { Building, BuildingType, GameAlert, GameEntity, GameState, Position, Unit, UnitDomain, UnitType } from '../../types';
 import { ALERT_COOLDOWN_TICKS, ENTITY_CONFIGS, GAME_LOOP_INTERVAL, HUMAN_PLAYER_ID, TILE_SIZE, TURN_STEP_DEGREES, unitAttackSounds } from '../../constants';
 import { findPath } from '../../utils/pathfinding';
 import { findNearestEnemy, headingTo, turnToward } from '../../utils/entity';
@@ -8,6 +8,21 @@ import { TickContext, shallowChanged, withStats } from '../helpers';
 // Repair text is only spawned every Nth tick per repairer to avoid flooding the screen.
 const REPAIR_BAY_TEXT_EVERY_N_TICKS = 10;
 const ENGINEER_TEXT_EVERY_N_TICKS = 5;
+
+/** Nearest finished refinery of the unit's owner. Refineries only need to exist to take a delivery; low power does not stop that. */
+function findNearestRefinery(unit: Unit, entities: Record<string, GameEntity>): Building | null {
+    let nearest: Building | null = null;
+    let nearestDistance = Infinity;
+    for (const entity of Object.values(entities)) {
+        if (entity.playerId !== unit.playerId || entity.type !== BuildingType.REFINERY || (entity as Building).isConstructing) continue;
+        const distance = Math.hypot(unit.position.x - entity.position.x, unit.position.y - entity.position.y);
+        if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearest = entity as Building;
+        }
+    }
+    return nearest;
+}
 
 /** Economy, repair, combat and movement for every unit. */
 export function updateUnits(state: GameState, ctx: TickContext, spatialGrid: SpatialGrid): GameState {
@@ -73,20 +88,37 @@ export function updateUnits(state: GameState, ctx: TickContext, spatialGrid: Spa
 
                     if (newCargo >= config.gatherCapacity!) {
                         currentUnit.cargoAmount = config.gatherCapacity;
-                        const refineries = Object.values(newEntities).filter(e => e.playerId === unit.playerId && e.type === BuildingType.REFINERY && (e as Building).isPowered);
-                        if (refineries.length > 0) {
-                            const nearestRefinery = refineries.sort((a,b) => Math.hypot(unit.position.x - a.position.x, unit.position.y - a.position.y) - Math.hypot(unit.position.x - b.position.x, unit.position.y - b.position.y))[0];
-                            const path = findPath(unit.position, nearestRefinery.position, state.terrain, unit.domain);
-                            // Only change status if a path is successfully found to prevent getting stuck
-                            if (path) {
-                                currentUnit = { ...currentUnit, status: 'RETURNING_TO_REFINERY', path: path, refineryTargetId: nearestRefinery.id };
-                            } else {
-                                // Can't find path to refinery, so stop trying.
-                                currentUnit.status = 'IDLE';
-                            }
-                        } else { currentUnit.status = 'IDLE'; }
+                        const nearestRefinery = findNearestRefinery(unit, newEntities);
+                        const path = nearestRefinery ? findPath(unit.position, nearestRefinery.position, state.terrain, unit.domain) : null;
+                        if (nearestRefinery && path) {
+                            currentUnit = { ...currentUnit, status: 'RETURNING_TO_REFINERY', path: path, refineryTargetId: nearestRefinery.id };
+                        } else {
+                            // No refinery to unload at yet (or no route). Go idle; the IDLE case below retries.
+                            currentUnit.status = 'IDLE';
+                        }
                     } else {
                         currentUnit.cargoAmount = newCargo;
+                    }
+                    break;
+                }
+                case 'IDLE': {
+                    // A miner that was working but ended up idle (no refinery yet, route blocked, ...) retries
+                    // once a second instead of sitting there forever. A stop order clears gatherTargetId.
+                    if (unit.gatherTargetId && tick % 10 === 0) {
+                        const isFull = (unit.cargoAmount || 0) >= config.gatherCapacity!;
+                        if (isFull) {
+                            const refinery = findNearestRefinery(unit, newEntities);
+                            const path = refinery ? findPath(unit.position, refinery.position, state.terrain, unit.domain) : null;
+                            if (refinery && path) {
+                                currentUnit = { ...currentUnit, status: 'RETURNING_TO_REFINERY', path, refineryTargetId: refinery.id };
+                            }
+                        } else {
+                            const patch = newResourcePatches[unit.gatherTargetId];
+                            const path = patch && patch.amount > 0 ? findPath(unit.position, patch.position, state.terrain, unit.domain) : null;
+                            if (patch && path) {
+                                currentUnit = { ...currentUnit, status: 'MOVING_TO_ORE', path, targetPosition: patch.position };
+                            }
+                        }
                     }
                     break;
                 }

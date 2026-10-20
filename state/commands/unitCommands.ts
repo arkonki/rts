@@ -98,7 +98,7 @@ export function stopUnits(state: GameState): GameState {
             newState.entities[id] = {
                 ...entity,
                 status: 'IDLE', path: undefined, targetId: undefined, targetPosition: undefined,
-                repairTargetId: undefined, holdPosition: false,
+                repairTargetId: undefined, gatherTargetId: undefined, refineryTargetId: undefined, holdPosition: false,
             };
         }
     });
