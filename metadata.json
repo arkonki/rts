@@ -1,6 +1,6 @@
 {
   "name": "AI RTS: Red Alert",
-  "description": "A simplified real-time strategy game inspired by classics like Command & Conquer: Red Alert, featuring a dynamic AI opponent powered by OpenRouter.",
+  "description": "A real-time strategy game in the style of Command & Conquer: Red Alert, with rule-based AI opponents.",
   "requestFramePermissions": [],
   "prompt": ""
 }
